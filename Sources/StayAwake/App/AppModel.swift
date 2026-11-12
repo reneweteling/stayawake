@@ -66,6 +66,8 @@ final class AppModel: ObservableObject {
     private var lastSampleLog: TimeInterval?
     private var lastSnapshotForEvents: Snapshot?
     private var helperReplaced = false
+    /// Set once an update is about to replace the app: no more arming.
+    private var updating = false
 
     private init() {
         backend = BackendFactory.make()
@@ -152,6 +154,40 @@ final class AppModel: ObservableObject {
             group.cancelAll()
         }
     }
+
+    /// The updater calls this right before it swaps the app. Disarms, stops
+    /// the heartbeat and releases, then reads `pmset -g` to confirm sleep is
+    /// back. Throws when it is not, so the update never leaves sleep off.
+    func prepareForUpdate() async throws {
+        var failure: String?
+        await enqueue { [self] in
+            updating = true
+            engine = RuleEngine.disarm(engine).state
+            headsUpSent = []
+            stopHeartbeat()
+            if availability == .ready || heldByUs {
+                if let error = await releaseOnce(reason: "update") { failure = "Could not restore sleep: \(error)" }
+            }
+            if failure == nil {
+                let reading = await sample()
+                sleepDisabled = reading.pmset?.sleepDisabled
+                if sleepDisabled == true {
+                    failure = "Sleep is still disabled. Run \(BackendFactory.manualRestoreCommand) and try again."
+                }
+            }
+            if let failure {
+                updating = false
+                note("Update stopped: \(failure)", event: "update_blocked")
+            } else {
+                note("Installing an update, sleep restored", event: "update_install")
+            }
+            await finishEvaluation(reason: "update")
+        }.value
+        if let failure { throw SelfUpdater.Failure(message: failure) }
+    }
+
+    /// The update failed after `prepareForUpdate`: arming works again.
+    func updateDidFail() { updating = false }
 
     // MARK: - User actions
 
@@ -329,6 +365,7 @@ final class AppModel: ObservableObject {
     // MARK: - Arm
 
     private func performArm(manual: Bool) async {
+        guard !updating else { return }
         message = nil
         await refreshAvailability()
         // First arm installs the helper. Whatever is still missing after

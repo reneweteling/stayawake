@@ -14,7 +14,7 @@ struct SettingsView: View {
             IdleTab(settings: settings, model: model).tabItem { Label("When Idle", systemImage: "moon.zzz") }
             NotificationsTab(settings: settings).tabItem { Label("Notifications", systemImage: "bell") }
             AdvancedTab(settings: settings, model: model).tabItem { Label("Advanced", systemImage: "slider.horizontal.3") }
-            AboutView().tabItem { Label("About", systemImage: "info.circle") }
+            AboutView(updates: UpdateChecker.shared).tabItem { Label("About", systemImage: "info.circle") }
         }
         .frame(width: 600, height: 580)
     }
@@ -126,6 +126,7 @@ private struct GeneralTab: View {
             Section("Startup") {
                 Toggle("Open StayAwake at login", isOn: Binding(get: { settings.launchAtLogin }, set: { settings.setLaunchAtLogin($0) }))
                 Toggle("Turn on StayAwake when it opens", isOn: $settings.startArmed)
+                UpdateToggle(updates: UpdateChecker.shared)
                 Toggle(isOn: $settings.clearLeftoverOnLaunch) {
                     Text("Repair sleep when StayAwake opens")
                     Text("If StayAwake quit while it was keeping the Mac awake, normal sleep is turned back on.")
@@ -821,5 +822,17 @@ private struct AdvancedTab: View {
         ]
         NSPasteboard.general.clearContents()
         NSPasteboard.general.setString(lines.joined(separator: "\n"), forType: .string)
+    }
+}
+
+/// Settings, General: TidyDrive's "Install updates automatically".
+private struct UpdateToggle: View {
+    @ObservedObject var updates: UpdateChecker
+
+    var body: some View {
+        Toggle(isOn: Binding(get: { updates.autoInstall }, set: { updates.autoInstall = $0 })) {
+            Text("Install updates automatically")
+            Text("Only while StayAwake is off. Sleep is always restored before the app is replaced.")
+        }
     }
 }

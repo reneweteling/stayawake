@@ -22,7 +22,7 @@ public enum HelperIdentity {
         requirement(identifier: helperIdentifier, relaxed: relaxed)
     }
 
-    static func requirement(identifier: String, relaxed: Bool) -> String {
+    public static func requirement(identifier: String, relaxed: Bool) -> String {
         if relaxed { return "identifier \"\(identifier)\"" }
         return "identifier \"\(identifier)\" and anchor apple generic and certificate leaf[subject.OU] = \"\(teamID)\""
     }

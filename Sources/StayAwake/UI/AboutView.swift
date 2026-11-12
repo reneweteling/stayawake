@@ -6,6 +6,7 @@ import AppKit
 struct AboutView: View {
     /// StayAwake's amber, the same as the site and the menu bar warning.
     static let accent = Color(red: 1.0, green: 0.71, blue: 0.28)
+    @ObservedObject var updates: UpdateChecker
 
     var body: some View {
         ScrollView {
@@ -28,6 +29,7 @@ struct AboutView: View {
             .padding(.horizontal, 20)
             .frame(maxWidth: .infinity)
         }
+        .task { await updates.checkIfNeeded() }
     }
 
     private var header: some View {
@@ -46,17 +48,42 @@ struct AboutView: View {
         }
     }
 
-    /// StayAwake has no update checker yet. Same layout as TidyDrive, the
-    /// button opens the releases page instead of checking in the app.
+    /// Same states as TidyDrive: checking, installing, update available with
+    /// an install button, up to date, or the last error.
     private var updatesRow: some View {
-        HStack(spacing: 10) {
-            Image(systemName: "arrow.down.circle").foregroundStyle(.secondary)
-            Text("New versions are on the releases page").font(.caption).foregroundStyle(.secondary)
-            Button {
-                NSWorkspace.shared.open(URL(string: "https://github.com/reneweteling/stayawake/releases")!)
-            } label: { Image(systemName: "arrow.clockwise") }
-                .buttonStyle(.borderless)
-                .help("Check for updates on GitHub")
+        VStack(spacing: 4) {
+            HStack(spacing: 10) {
+                if updates.isChecking {
+                    ProgressView().controlSize(.small)
+                    Text("Checking for updates…").font(.caption).foregroundStyle(.secondary)
+                } else if let step = updates.installStep {
+                    ProgressView().controlSize(.small)
+                    Text("\(step)…").font(.caption).foregroundStyle(.secondary)
+                } else if updates.isUpdateAvailable, let latest = updates.latestVersion {
+                    Image(systemName: "arrow.down.circle.fill").foregroundStyle(Self.accent)
+                    Text("Update available: \(latest)").font(.caption)
+                    if updates.canInstall {
+                        Button("Install and restart") { Task { await updates.install() } }
+                            .controlSize(.small)
+                            .help("Turns StayAwake off and restores normal sleep first")
+                    } else {
+                        Button("Download") { updates.openReleasesPage() }.controlSize(.small)
+                    }
+                } else if updates.lastCheckedAt != nil {
+                    Image(systemName: "checkmark.circle.fill").foregroundStyle(.green)
+                    Text("You're on the latest version").font(.caption).foregroundStyle(.secondary)
+                } else if let error = updates.lastCheckError {
+                    Image(systemName: "exclamationmark.triangle").foregroundStyle(.secondary)
+                    Text(error).font(.caption).foregroundStyle(.secondary).lineLimit(1)
+                }
+                Button { Task { await updates.forceCheck() } } label: { Image(systemName: "arrow.clockwise") }
+                    .buttonStyle(.borderless)
+                    .disabled(updates.isChecking || updates.installStep != nil)
+                    .help("Check for updates")
+            }
+            if let error = updates.installError {
+                Text("Update failed: \(error)").font(.caption).foregroundStyle(.orange)
+            }
         }
     }
 

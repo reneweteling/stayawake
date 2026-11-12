@@ -57,6 +57,20 @@ cp -R build/StayAwake.app /Applications/
 
 Requires macOS 14 or later on Apple Silicon and the Xcode Command Line Tools.
 
+### Updates
+
+StayAwake checks GitHub for a new release on launch and then once a day. Settings, About shows the result and an Install and restart button. With Install updates automatically on (Settings, General), it installs by itself, but only while StayAwake is off and no window is open.
+
+| Step | What happens |
+|---|---|
+| Download | `StayAwake.dmg` from this repo's release, SHA-256 checked against GitHub's asset digest |
+| Verify | Strict signature of the app and its helper (team `ND82KXRD2Q`), Gatekeeper, version matches the release and is newer |
+| Restore sleep | Disarm, release, then `pmset -g` must show sleep enabled. Otherwise the update stops |
+| Swap | Quit, replace the bundle in place, open the new one |
+| Helper | On launch the new app sees the older running helper and registers it again from the new bundle |
+
+The re-registration should keep the existing approval, since the bundle id and team stay the same. If macOS does ask again, the popover shows the usual approval step, and nothing is held while it waits. Builds signed ad hoc (`scripts/build.sh` without an identity) don't update themselves.
+
 ## Command line
 
 ```bash
@@ -79,7 +93,7 @@ sudo pmset -a disablesleep 0
 
 ## Privacy
 
-No sensor data leaves the Mac. Crash reports go to Sentry with the app version and rule names, and can be switched off in Settings, General.
+No sensor data leaves the Mac. Crash reports go to Sentry with the app version and rule names, and can be switched off in Settings, General. The update check calls the public GitHub releases API with a generic User-Agent and no cookies.
 
 ## Development
 

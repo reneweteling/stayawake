@@ -4,7 +4,7 @@ import SwiftUI
 import StayAwakeCore
 
 @MainActor
-final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
+final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate, NSWindowDelegate {
     private var statusItem: NSStatusItem!
     private let popover = NSPopover()
     private var settingsWindow: NSWindow?
@@ -37,6 +37,26 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
 
         model.showPopover = { [weak self] in self?.showPopover() }
         model.start()
+
+        // Updates install themselves only while StayAwake is off (not armed,
+        // not tripped) and no popover or window is open. Before the swap the
+        // model releases sleep; if it can't, the update stops.
+        let updates = UpdateChecker.shared
+        updates.isBusy = { [weak self] in
+            guard let self else { return true }
+            let model = self.model
+            return model.isArmed || model.engine.phase == .tripped || self.popover.isShown
+                || self.settingsWindow?.isVisible == true
+        }
+        updates.prepareForInstall = { [weak self] in try await self?.model.prepareForUpdate() }
+        updates.installFailed = { [weak self] in self?.model.updateDidFail() }
+        model.$engine.map(\.phase).removeDuplicates().dropFirst()
+            .receive(on: DispatchQueue.main)
+            .sink { phase in
+                if phase == .off { Task { await UpdateChecker.shared.installPendingIfIdle() } }
+            }
+            .store(in: &cancellables)
+        updates.start()
 
         // `open StayAwake.app --args --show settings` for when the icon is hidden behind the notch.
         let args = CommandLine.arguments
@@ -109,6 +129,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
         // Seeing the tripped popover is the acknowledgement.
         if acknowledgeOnClose, model.engine.phase == .tripped { model.acknowledge() }
         acknowledgeOnClose = false
+        Task { await UpdateChecker.shared.installPendingIfIdle() }
     }
 
     // MARK: Settings window
@@ -121,10 +142,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
             window.title = "StayAwake Settings"
             window.styleMask = [.titled, .closable]
             window.isReleasedWhenClosed = false
+            window.delegate = self
             window.center()
             settingsWindow = window
         }
         NSApp.activate(ignoringOtherApps: true)
         settingsWindow?.makeKeyAndOrderFront(nil)
+    }
+
+    func windowWillClose(_ notification: Notification) {
+        guard (notification.object as? NSWindow) === settingsWindow else { return }
+        // isVisible is still true here; look again once the window is gone.
+        DispatchQueue.main.async { Task { await UpdateChecker.shared.installPendingIfIdle() } }
     }
 }
