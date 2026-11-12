@@ -3,6 +3,7 @@ import '../styles/global.css';
 import Hero from '../components/Hero.astro';
 import OnTheGo from '../components/OnTheGo.astro';
 import Rules from '../components/Rules.astro';
+import Compare from '../components/Compare.astro';
 import Failsafe from '../components/Failsafe.astro';
 import Steps from '../components/Steps.astro';
 import Faq from '../components/Faq.astro';
@@ -10,12 +11,18 @@ import Maker from '../components/Maker.astro';
 import Footer from '../components/Footer.astro';
 import { faq } from '../data/faq';
 
+let version = '1.2.1';
+try {
+  const r = await fetch('https://api.github.com/repos/reneweteling/stayawake/releases/latest', { headers: { 'User-Agent': 'stayawake-site' } });
+  if (r.ok) version = String((await r.json()).tag_name ?? version).replace(/^v/, '');
+} catch {}
+
 const base = import.meta.env.BASE_URL.replace(/\/?$/, '/');
-const title = 'StayAwake: keep AI agents working while your MacBook is in your bag';
+const title = 'StayAwake: keep a closed MacBook awake on battery for AI agents';
 const description = 'Run Claude Code, Codex and other AI agents on the go. StayAwake is a free macOS menu bar app that keeps a closed MacBook awake on battery while you steer from your phone, and stops safely on heat, a low battery, a dropped network or your schedule.';
 const site = 'https://reneweteling.github.io/stayawake/';
 const ogImage = `${site}assets/og.png`;
-const ogAlt = 'StayAwake: AI agents keep working while your laptop is in your bag.';
+const ogAlt = 'StayAwake app icon, the headline Agents keep working. Laptop in your bag. and the menu bar popover showing temperatures and battery limits.';
 const download = 'https://github.com/reneweteling/stayawake/releases/latest/download/StayAwake.dmg';
 
 const person = {
@@ -26,6 +33,7 @@ const person = {
   image: `${site}assets/rene.jpg`,
   sameAs: ['https://github.com/reneweteling'],
 };
+const org = { '@type': 'Organization', '@id': 'https://www.weteling.com/#org', name: 'Felobo B.V.', url: 'https://www.weteling.com' };
 const jsonLd = {
   '@context': 'https://schema.org',
   '@graph': [
@@ -46,6 +54,8 @@ const jsonLd = {
       image: `${site}assets/icon.png`,
       applicationCategory: 'UtilitiesApplication',
       operatingSystem: 'macOS 14 or later (Apple Silicon)',
+      softwareVersion: version,
+      screenshot: `${site}assets/og.png`,
       downloadUrl: download,
       installUrl: download,
       license: 'https://polyformproject.org/licenses/noncommercial/1.0.0',
@@ -60,9 +70,22 @@ const jsonLd = {
         'Unreadable sensors count as a trip',
         'Alert when the power cable comes out while armed',
       ],
-      author: { '@id': person['@id'] },
+      author: [{ '@id': person['@id'] }, { '@id': org['@id'] }],
+      publisher: { '@id': org['@id'] },
     },
     person,
+    org,
+    {
+      '@type': 'HowTo',
+      '@id': `${site}#install`,
+      name: 'How to install StayAwake and keep a closed MacBook awake on battery',
+      step: [
+        { '@type': 'HowToStep', position: 1, name: 'Download', text: 'Download StayAwake.dmg from the latest GitHub release.', url: download },
+        { '@type': 'HowToStep', position: 2, name: 'Install', text: 'Drag StayAwake into Applications.' },
+        { '@type': 'HowToStep', position: 3, name: 'Approve the helper', text: 'Approve the helper once in System Settings, Login Items.' },
+        { '@type': 'HowToStep', position: 4, name: 'Turn it on', text: 'Click the moon in the menu bar and flip Stay awake, then close the lid.' },
+      ],
+    },
     {
       '@type': 'FAQPage',
       '@id': `${site}#faq`,
@@ -88,7 +111,7 @@ const jsonLd = {
     <meta property="og:site_name" content="StayAwake" />
     <meta property="og:locale" content="en_US" />
     <meta property="og:url" content={site} />
-    <meta property="og:title" content="StayAwake: AI agents on the go, laptop in your bag" />
+    <meta property="og:title" content="StayAwake: agents keep working, laptop in your bag" />
     <meta property="og:description" content={description} />
     <meta property="og:image" content={ogImage} />
     <meta property="og:image:secure_url" content={ogImage} />
@@ -98,7 +121,7 @@ const jsonLd = {
     <meta property="og:image:alt" content={ogAlt} />
 
     <meta name="twitter:card" content="summary_large_image" />
-    <meta name="twitter:title" content="StayAwake: AI agents on the go, laptop in your bag" />
+    <meta name="twitter:title" content="StayAwake: agents keep working, laptop in your bag" />
     <meta name="twitter:description" content={description} />
     <meta name="twitter:image" content={ogImage} />
     <meta name="twitter:image:alt" content={ogAlt} />
@@ -120,6 +143,7 @@ const jsonLd = {
     <OnTheGo />
     <Rules />
     <Failsafe />
+    <Compare />
     <Steps />
     <Faq />
     <Maker />

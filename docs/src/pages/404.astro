@@ -1,0 +1,30 @@
+---
+import '../styles/global.css';
+const base = import.meta.env.BASE_URL.replace(/\/?$/, '/');
+---
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Page not found | StayAwake</title>
+    <meta name="description" content="This page does not exist. Go back to the StayAwake home page." />
+    <meta name="robots" content="noindex" />
+    <meta name="theme-color" content="#0b1112" />
+    <link rel="icon" type="image/svg+xml" href={`${base}favicon.svg`} />
+  </head>
+  <body>
+    <main class="wrap">
+      <p class="code">404</p>
+      <h1>Nothing here.</h1>
+      <p class="lede">The page you wanted does not exist. The Mac is still awake though.</p>
+      <p><a class="btn primary" href={base}>Back to StayAwake</a></p>
+    </main>
+  </body>
+</html>
+<style>
+  main { padding-top: 22vh; }
+  .code { font: 500 14px/1 var(--mono); color: var(--dim); margin-bottom: 16px; }
+  h1 { font-size: clamp(2.5rem, 6vw, 4rem); }
+  .lede { margin-bottom: 32px; }
+</style>

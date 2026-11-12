@@ -1,0 +1,15 @@
+<section class="block" id="compare">
+  <div class="wrap grid">
+    <h2>Compared with caffeinate, Amphetamine and pmset</h2>
+    <div class="text">
+      <p>caffeinate and Amphetamine create power assertions. macOS honors those while the lid is open, but not when you close the lid on battery. Only <code>pmset -a disablesleep 1</code> does that.</p>
+      <p>You can run it by hand, and it works. Then nothing watches the temperature, the charge or the network, and it stays on until you undo it with <code>sudo pmset -a disablesleep 0</code>.</p>
+      <p>StayAwake runs the same command through a small root helper and adds the rules above and a fail-safe that restores sleep if the app dies. If you only need the Mac awake with the lid open, caffeinate or Amphetamine are the simpler tool.</p>
+    </div>
+  </div>
+</section>
+<style>
+  .grid { display: grid; grid-template-columns: minmax(0, 4fr) minmax(0, 8fr); gap: 48px; }
+  .text { display: grid; gap: 18px; color: var(--muted); max-width: 62ch; }
+  @media (max-width: 880px) { .grid { grid-template-columns: 1fr; gap: 28px; } }
+</style>

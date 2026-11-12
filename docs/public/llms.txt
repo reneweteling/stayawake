@@ -26,7 +26,19 @@
 - Distribution: signed and notarized DMG on GitHub releases, not the Mac App Store (it needs a root helper)
 - Privacy: no sensor data leaves the Mac; only crash reports go to Sentry, without paths, and they can be switched off
 
+## Compared with other options
+
+- caffeinate and Amphetamine use power assertions, which macOS does not honor for a closed lid on battery. They are the simpler tool when the lid stays open
+- pmset -a disablesleep 1 does keep a closed lid awake on battery, but by hand nothing watches heat, charge or network and you must undo it yourself
+- StayAwake runs that command through a root helper and adds the rules above and a fail-safe
+
+## Manual restore
+
+- sudo pmset -a disablesleep 0 (check with pmset -g | grep SleepDisabled)
+
 ## Links
+
+- Full version: https://reneweteling.github.io/stayawake/llms-full.txt
 
 - Website: https://reneweteling.github.io/stayawake/
 - Download: https://github.com/reneweteling/stayawake/releases/latest/download/StayAwake.dmg

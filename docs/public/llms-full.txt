@@ -1,0 +1,105 @@
+# StayAwake (full)
+
+> StayAwake is a free macOS menu bar app (macOS 14+, Apple Silicon) that keeps a closed MacBook awake on battery so AI coding agents (Claude Code, Codex and similar) keep working while the laptop is in your bag and you steer from your phone, and lets it sleep again when it gets too warm, the battery runs low, the network drops or the time is up. Made by René Weteling (https://www.weteling.com).
+
+## AI on the go
+
+- Start your agents, arm StayAwake, connect from your phone with your agent tool's remote or mobile option (phone hotspot for the network), close the lid and put the Mac in your bag
+- The agents keep running on battery. StayAwake stops safely on heat, a low battery, a dropped network or the schedule
+
+## What it does
+
+- One click in the menu bar runs pmset -a disablesleep 1 through a small root helper (SMAppService launchd daemon)
+- Shows CPU, GPU and battery temperature, battery level, time held and which rule is closest to tripping
+- Alerts when the power cable comes out while it is armed
+
+## Safety rules
+
+- Defaults: battery temperature 43 °C for 60 s, CPU 100 °C as a 60 s average for 2 min, GPU 95 °C, macOS thermal pressure serious for 5 min, battery below 40%, no network for 15 min, lid closed on battery for 90 min, idle CPU under 10% for 15 min, an 8 hour cap, and allowed hours per weekday. Every limit is a setting
+- Unreadable sensors count as a trip
+- The helper holds a lease the app keeps renewing. A crash, hang or force quit restores sleep within 60 seconds, a reboot restores it at boot, and a 12 hour ceiling applies no matter what
+- The helper can run exactly two commands, pmset -a disablesleep 1 and 0, and only accepts the signed StayAwake app
+
+## Facts
+
+- Price: free for noncommercial use, PolyForm Noncommercial 1.0.0
+- Distribution: signed and notarized DMG on GitHub releases, not the Mac App Store (it needs a root helper)
+- Privacy: no sensor data leaves the Mac; only crash reports go to Sentry, without paths, and they can be switched off
+
+## Compared with other options
+
+- caffeinate and Amphetamine use power assertions, which macOS does not honor for a closed lid on battery. They are the simpler tool when the lid stays open
+- pmset -a disablesleep 1 does keep a closed lid awake on battery, but by hand nothing watches heat, charge or network and you must undo it yourself
+- StayAwake runs that command through a root helper and adds the rules above and a fail-safe
+
+## Manual restore
+
+- sudo pmset -a disablesleep 0 (check with pmset -g | grep SleepDisabled)
+
+## Links
+
+- Full version: https://reneweteling.github.io/stayawake/llms-full.txt
+
+- Website: https://reneweteling.github.io/stayawake/
+- Download: https://github.com/reneweteling/stayawake/releases/latest/download/StayAwake.dmg
+- Source: https://github.com/reneweteling/stayawake
+- Maker: https://www.weteling.com
+
+## FAQ
+
+### How do I keep a MacBook awake with the lid closed on battery?
+
+Run sudo pmset -a disablesleep 1, or let StayAwake do it with one click in the menu bar. Normal tools like caffeinate only hold power assertions, and macOS ignores those when you close the lid on battery. disablesleep is the setting that does keep a closed MacBook running. StayAwake adds the safety rules and the fail-safe that make this fine to use in a bag.
+
+### Is it safe to run Claude Code in a closed MacBook in a backpack?
+
+It is safe with limits, and StayAwake sets them for you. By default the Mac may sleep at 43 °C battery temperature, a 100 °C CPU or 95 °C GPU average over 60 seconds, serious thermal pressure for 5 minutes, below 40% battery, 15 minutes without network, 90 minutes lid closed on battery and 8 hours in total. Unreadable sensors count as hot. Still, do not pack the Mac tight. Leave some air around it.
+
+### How do I undo pmset disablesleep?
+
+Run sudo pmset -a disablesleep 0 in Terminal. StayAwake does this itself when a rule trips, when the app stops renewing its lease, and at every boot, so you only need the command if you want to be sure. You can check the current state with pmset -g | grep SleepDisabled.
+
+### How is StayAwake different from caffeinate, Amphetamine or pmset by hand?
+
+caffeinate and Amphetamine use power assertions. Those keep a Mac awake with the lid open, or on power with a display attached, but macOS does not honor them for a closed lid on battery. pmset -a disablesleep 1 does, and you can run it by hand, but then nothing watches the temperature, the battery or the network, and you must remember to undo it. StayAwake runs that same command through a root helper and adds heat, battery, network, schedule and lid-time rules plus a fail-safe that restores sleep if the app dies.
+
+### Does the Mac stay on my hotspot with the lid closed?
+
+Yes, as long as it was already connected. StayAwake keeps the Mac awake, so the connection it has stays up. Join the hotspot before you close the lid and keep Personal Hotspot on. If the network is gone for 15 minutes, the no network rule lets the Mac sleep.
+
+### Can I control Claude Code from my phone with this?
+
+Not by itself. Use the remote or mobile option of your agent tool, for Claude Code or Codex. StayAwake does not provide that link. It keeps the Mac awake and online, so the session is still there when you connect from your phone.
+
+### Is it safe in a bag?
+
+That is what most of the work went into. By default it stops at 43 °C battery temperature, a 100 °C CPU average, serious thermal pressure, 40% battery, 15 minutes without network, 90 minutes lid closed on battery and 8 hours in total. Unreadable sensors count as hot. Still, do not pack it tight. Leave some air around the Mac.
+
+### What does it actually do?
+
+It runs pmset -a disablesleep 1 for you through a small root helper, so a closed MacBook on battery keeps running. It runs pmset -a disablesleep 0 when a rule trips, when the app stops renewing its lease, and on every boot.
+
+### What if the app crashes while it holds?
+
+The helper holds a lease that the app keeps renewing. When that stops, the lease runs out within 60 seconds and the helper turns sleep back on. After a reboot it does that before anything else. If you ever doubt it, run sudo pmset -a disablesleep 0.
+
+### Why not the App Store?
+
+It needs a root helper, so it ships as a signed and notarized app on GitHub releases.
+
+### What does it send?
+
+Crash reports through Sentry with the app version and rule names, nothing else. No sensor data leaves the Mac. You can switch crash reports off in Settings.
+
+### What does it cost?
+
+Nothing for noncommercial use, under PolyForm Noncommercial 1.0.0. The source is on GitHub.
+
+## Install
+
+1. Download StayAwake.dmg from https://github.com/reneweteling/stayawake/releases/latest
+2. Drag StayAwake into Applications
+3. Approve the helper once in System Settings, Login Items
+4. Click the moon in the menu bar and flip Stay awake, then close the lid
+
+Requires macOS 14 or newer on Apple Silicon. Signed and notarized. License: PolyForm Noncommercial 1.0.0. Made by René Weteling / Felobo B.V.
