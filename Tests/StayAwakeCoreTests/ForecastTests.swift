@@ -49,7 +49,7 @@ final class ForecastTests: XCTestCase {
             rig.eval()
         }
         let floor = rig.last!.margins.first { $0.rule == .batteryFloor }
-        XCTAssertEqual(floor!.seconds!, 50 * 60, accuracy: 120, "70 percent now, floor at 20, one point per minute")
+        XCTAssertEqual(floor!.seconds!, 30 * 60, accuracy: 120, "70 percent now, floor at 40, one point per minute")
         XCTAssertEqual(rig.last!.timeLeft!, floor!.seconds!, accuracy: 1)
     }
 

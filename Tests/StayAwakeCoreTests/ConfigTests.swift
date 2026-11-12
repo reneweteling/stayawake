@@ -11,7 +11,7 @@ final class ConfigTests: XCTestCase {
         XCTAssertEqual(c.batteryTempLimit, 43); XCTAssertEqual(c.batteryTempSustainSeconds, 60); XCTAssertEqual(c.batteryTempClearMargin, 3)
         XCTAssertFalse(c.batteryHeatingEnabled); XCTAssertEqual(c.batteryHeatingRise, 2)
         XCTAssertEqual(c.thermalLimit, .serious); XCTAssertEqual(c.thermalSustainSeconds, 300)
-        XCTAssertEqual(c.floorPercent, 20)
+        XCTAssertEqual(c.floorPercent, 40)
         XCTAssertEqual(c.lidMinutes, 90)
         XCTAssertEqual(c.idleCpuPercent, 10); XCTAssertEqual(c.idleMinutes, 15)
         XCTAssertFalse(c.watchedEnabled); XCTAssertEqual(c.watchedNames, ["claude"]); XCTAssertEqual(c.watchedMinutes, 20)
@@ -174,6 +174,37 @@ final class ConfigTests: XCTestCase {
         XCTAssertEqual(c.cpuLimit, 104)
         XCTAssertEqual(c.gpuLimit, 100, "the GPU rule was edited (wait), so its limit stays too")
         XCTAssertEqual(c.gpuSustainSeconds, 90)
+    }
+
+    // MARK: Version 3 to 4
+
+    /// What version 3 stored: the whole Balanced config with the old floor of 20.
+    private func v3Blob(floor: Int?) throws -> Data {
+        var d = try JSONSerialization.jsonObject(with: JSONEncoder().encode(Config())) as! [String: Any]
+        d["configVersion"] = 3
+        d["floorPercent"] = floor
+        if floor == nil { d.removeValue(forKey: "floorPercent") }
+        return try JSONSerialization.data(withJSONObject: d)
+    }
+
+    func testUntouchedFloorOf20MovesTo40() throws {
+        let c = try Config.decodeLenient(from: v3Blob(floor: 20))
+        XCTAssertEqual(c.floorPercent, 40)
+        XCTAssertEqual(c, Config())
+        XCTAssertEqual(try Config.decodeLenient(from: v3Blob(floor: nil)).floorPercent, 40)
+    }
+
+    func testEditedFloorStaysAfterMigration() throws {
+        XCTAssertEqual(try Config.decodeLenient(from: v3Blob(floor: 30)).floorPercent, 30)
+        XCTAssertEqual(try Config.decodeLenient(from: v3Blob(floor: 10)).floorPercent, 10)
+        XCTAssertEqual(try Config.decodeLenient(from: v3Blob(floor: 55)).floorPercent, 55)
+    }
+
+    func testFloorOf20OnVersion4IsNotMigratedAgain() throws {
+        var mine = Config()
+        mine.floorPercent = 20
+        let back = try Config.decodeLenient(from: JSONEncoder().encode(mine))
+        XCTAssertEqual(back.floorPercent, 20, "picked on purpose after the bump")
     }
 
     func testMigrationIsIdempotent() throws {

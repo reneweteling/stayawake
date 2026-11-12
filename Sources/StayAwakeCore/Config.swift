@@ -29,7 +29,7 @@ public enum ConfigRange {
 public struct Config: Codable, Equatable, Sendable {
     /// Bumped when stored settings need more than "missing keys take their
     /// default". See `decodeLenient`.
-    public static let currentVersion = 3
+    public static let currentVersion = 4
     public var configVersion = Config.currentVersion
     // CPU temperature, compared as the rolling average of the curated SMC keys
     public var cpuEnabled = true
@@ -58,7 +58,7 @@ public struct Config: Codable, Equatable, Sendable {
     public var thermalSustainSeconds = 300
     // Battery floor
     public var floorEnabled = true
-    public var floorPercent = 20
+    public var floorPercent = 40
     // Lid closed on battery
     public var lidEnabled = true
     public var lidMinutes = 90
@@ -168,10 +168,22 @@ public struct Config: Codable, Equatable, Sendable {
     /// Balanced to 100 C and 95 C. A rule the user never touched (still at
     /// the default of the version it was stored with; a missing key counts as
     /// the default) moves to the new defaults. Edited values stay as they are.
+    /// Version 4 raises the battery floor default from 20 to 40.
     static func migrate(_ input: [String: Any]) -> [String: Any] {
         var stored = input
         let version = (stored["configVersion"] as? NSNumber)?.intValue ?? 1
-        guard version < 3 else { return stored }
+        guard version < 4 else { return stored }
+        if version < 3 { stored = migrateHeat(stored, version: version) }
+        // Version 4 raised the battery floor from 20 to 40. A floor still at 20 (or
+        // missing) was never touched, so it takes the new default. Edited values stay.
+        if ((stored["floorPercent"] as? NSNumber)?.intValue ?? 20) == 20 { stored.removeValue(forKey: "floorPercent") }
+        stored["configVersion"] = Config.currentVersion
+        return stored
+    }
+
+    /// The version 1 and 2 heat limit migration, see `migrate`.
+    private static func migrateHeat(_ input: [String: Any], version: Int) -> [String: Any] {
+        var stored = input
         func number(_ key: String, default d: Double) -> Double { (stored[key] as? NSNumber)?.doubleValue ?? d }
         // Untouched: drop the keys so the new defaults apply. Edited: write
         // the missing ones as their version 1 default, so a stored limit
@@ -192,7 +204,6 @@ public struct Config: Codable, Equatable, Sendable {
             reset(["cpuLimit", "cpuSustainSeconds"], ifAt: [102, 120])
             reset(["gpuLimit", "gpuSustainSeconds"], ifAt: [100, 120])
         }
-        stored["configVersion"] = Config.currentVersion
         return stored
     }
 }

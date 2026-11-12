@@ -70,7 +70,7 @@ public enum Readout {
         return "now \(number(unit.convert(now)))"
     }
 
-    /// "Battery 71% / stops at 20%"
+    /// "Battery 71% / stops at 40%"
     public static func batteryLevel(_ snap: Snapshot, _ config: Config) -> String {
         let p = snap.batteryPercent.map { "\($0)%" } ?? "n/a"
         return "Battery \(p) / stops at \(config.floorPercent)%"
@@ -223,7 +223,7 @@ public struct MenuBarStatus: Equatable, Sendable {
         return parts.joined(separator: " ")
     }
 
-    /// Tooltip for the first rule in the warning band, e.g. "Battery at 24%, trips at 20%".
+    /// Tooltip for the first rule in the warning band, e.g. "Battery at 24%, trips at 40%".
     private static func warningText(_ i: Input) -> String? {
         guard let d = i.decision, let first = d.nextToTrip.first(where: { d.warnings.contains($0.rule) }) else { return nil }
         let s = i.snapshot, c = i.config, sig = d.signals

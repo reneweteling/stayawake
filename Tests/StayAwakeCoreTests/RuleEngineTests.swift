@@ -211,12 +211,12 @@ final class RuleEngineTests: XCTestCase {
     func testBatteryFloorTripsBelowNotAt() {
         var rig = Rig()
         rig.arm()
-        rig.snap.batteryPercent = 20
+        rig.snap.batteryPercent = 40
         XCTAssertEqual(rig.eval().phase, .holding)
-        rig.snap.batteryPercent = 19
+        rig.snap.batteryPercent = 39
         let d = rig.eval()
         XCTAssertEqual(d.trip?.rule, .batteryFloor)
-        XCTAssertEqual(d.trip?.shortReason, "LOW 19%")
+        XCTAssertEqual(d.trip?.shortReason, "LOW 39%")
     }
 
     func testBatteryFloorIgnoredWhileCharging() {
@@ -230,18 +230,18 @@ final class RuleEngineTests: XCTestCase {
     func testBatteryFloorHysteresisNeedsTenPoints() {
         var rig = Rig()
         rig.arm()
-        rig.snap.batteryPercent = 19
+        rig.snap.batteryPercent = 39
         rig.eval()
-        rig.snap.batteryPercent = 29
+        rig.snap.batteryPercent = 49
         XCTAssertEqual(rig.eval().rules, [.batteryFloor])
-        rig.snap.batteryPercent = 30
+        rig.snap.batteryPercent = 50
         XCTAssertEqual(rig.eval().rules, [])
     }
 
     func testBatteryFloorClearsWhenCharging() {
         var rig = Rig()
         rig.arm()
-        rig.snap.batteryPercent = 15
+        rig.snap.batteryPercent = 35
         rig.eval()
         rig.snap.isCharging = true
         XCTAssertEqual(rig.eval().rules, [])

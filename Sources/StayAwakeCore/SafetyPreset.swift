@@ -40,13 +40,13 @@ public enum SafetyPreset: String, CaseIterable, Sendable {
         switch self {
         case .cautious:
             return Limits(cpu: 95, cpuSustain: 60, gpu: 90, gpuSustain: 60, battery: 40, batterySustain: 30,
-                          thermal: .serious, thermalSustain: 60, heating: true, heatingRise: 2, floor: 30)
+                          thermal: .serious, thermalSustain: 60, heating: true, heatingRise: 2, floor: 50)
         case .balanced:
             return Limits(cpu: 100, cpuSustain: 120, gpu: 95, gpuSustain: 120, battery: 43, batterySustain: 60,
-                          thermal: .serious, thermalSustain: 300, heating: false, heatingRise: 2, floor: 20)
+                          thermal: .serious, thermalSustain: 300, heating: false, heatingRise: 2, floor: 40)
         case .relaxed:
             return Limits(cpu: 106, cpuSustain: 180, gpu: 105, gpuSustain: 180, battery: 45, batterySustain: 60,
-                          thermal: .critical, thermalSustain: 300, heating: false, heatingRise: 2, floor: 10)
+                          thermal: .critical, thermalSustain: 300, heating: false, heatingRise: 2, floor: 25)
         }
     }
 

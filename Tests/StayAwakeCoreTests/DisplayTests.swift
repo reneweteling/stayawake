@@ -8,7 +8,7 @@ final class DisplayTests: XCTestCase {
         XCTAssertEqual(Readout.cpu(s, c), "CPU 58 °C / 100")
         XCTAssertEqual(Readout.gpu(s, c), "GPU 52 °C / 95")
         XCTAssertEqual(Readout.batteryTemperature(s, c), "Battery 34 °C / 43")
-        XCTAssertEqual(Readout.batteryLevel(s, c), "Battery 71% / stops at 20%")
+        XCTAssertEqual(Readout.batteryLevel(s, c), "Battery 71% / stops at 40%")
     }
 
     func testReadoutsFollowTheConfiguredLimitsAndUnit() {
@@ -23,7 +23,7 @@ final class DisplayTests: XCTestCase {
     func testMissingReadingsAreShownAsNA() {
         let s = Snapshot(cpuTemperature: nil, gpuTemperature: nil, batteryPercent: nil)
         XCTAssertEqual(Readout.cpu(s, Config()), "CPU n/a / 100")
-        XCTAssertEqual(Readout.batteryLevel(s, Config()), "Battery n/a / stops at 20%")
+        XCTAssertEqual(Readout.batteryLevel(s, Config()), "Battery n/a / stops at 40%")
     }
 
     func testReadoutsShowTheAverageTheRuleUses() {
@@ -42,7 +42,7 @@ final class DisplayTests: XCTestCase {
 
     func testValueSplitsOffTheLabel() {
         XCTAssertEqual(Readout.value("CPU 58 °C / 80", label: "CPU"), "58 °C / 80")
-        XCTAssertEqual(Readout.value("Battery 71% / stops at 20%", label: "Battery"), "71% / stops at 20%")
+        XCTAssertEqual(Readout.value("Battery 71% / stops at 40%", label: "Battery"), "71% / stops at 40%")
     }
 
     func testDurations() {
@@ -123,13 +123,13 @@ final class MenuBarStatusTests: XCTestCase {
 
     func testWarningWhenARuleIsWithinTenPercent() {
         var rig = Rig()
-        rig.snap.batteryPercent = 22   // floor 20: 2.5% of the way
+        rig.snap.batteryPercent = 42   // floor 40: 3.3% of the way
         rig.arm()
         XCTAssertEqual(rig.state.phase, .holding)
         let s = MenuBarStatus.make(input(rig))
         XCTAssertEqual(s.kind, .warning)
         XCTAssertEqual(s.tone, .amber)
-        XCTAssertEqual(s.tooltip, "Battery at 22%, trips at 20%")
+        XCTAssertEqual(s.tooltip, "Battery at 42%, trips at 40%")
     }
 
     func testTrippedShowsTheShortReasonUntilAcknowledged() {
