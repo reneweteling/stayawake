@@ -30,12 +30,22 @@ final class SafetyPresetTests: XCTestCase {
         XCTAssertFalse(relaxed.batteryHeatingEnabled)
     }
 
+    func testPresetsAreOrdered() {
+        let c = SafetyPreset.cautious.apply(to: Config())
+        let b = SafetyPreset.balanced.apply(to: Config())
+        let r = SafetyPreset.relaxed.apply(to: Config())
+        XCTAssertLessThanOrEqual(c.cpuLimit, b.cpuLimit); XCTAssertLessThanOrEqual(b.cpuLimit, r.cpuLimit)
+        XCTAssertLessThanOrEqual(c.gpuLimit, b.gpuLimit); XCTAssertLessThanOrEqual(b.gpuLimit, r.gpuLimit)
+        XCTAssertLessThanOrEqual(c.batteryTempLimit, b.batteryTempLimit); XCTAssertLessThanOrEqual(b.batteryTempLimit, r.batteryTempLimit)
+        XCTAssertLessThanOrEqual(c.cpuSustainSeconds, b.cpuSustainSeconds); XCTAssertLessThanOrEqual(b.cpuSustainSeconds, r.cpuSustainSeconds)
+    }
+
     func testPresetTable() {
         typealias Row = (cpu: Double, cpuWait: Int, gpu: Double, gpuWait: Int, battery: Double, batteryWait: Int,
                          thermal: ThermalLevel, thermalWait: Int, heating: Bool)
         let table: [SafetyPreset: Row] = [
-            .cautious: (98, 60, 95, 60, 40, 30, .serious, 60, true),
-            .balanced: (102, 120, 100, 120, 43, 60, .serious, 300, false),
+            .cautious: (95, 60, 90, 60, 40, 30, .serious, 60, true),
+            .balanced: (100, 120, 95, 120, 43, 60, .serious, 300, false),
             .relaxed: (106, 180, 105, 180, 45, 60, .critical, 300, false),
         ]
         for (preset, row) in table {

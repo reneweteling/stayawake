@@ -5,9 +5,9 @@ final class ConfigTests: XCTestCase {
     func testDefaultsMatchTheSpec() {
         let c = Config()
         XCTAssertEqual(c.configVersion, Config.currentVersion)
-        XCTAssertTrue(c.cpuEnabled); XCTAssertEqual(c.cpuLimit, 102); XCTAssertEqual(c.cpuSustainSeconds, 120); XCTAssertEqual(c.cpuClearMargin, 10)
+        XCTAssertTrue(c.cpuEnabled); XCTAssertEqual(c.cpuLimit, 100); XCTAssertEqual(c.cpuSustainSeconds, 120); XCTAssertEqual(c.cpuClearMargin, 10)
         XCTAssertEqual(c.smoothingSeconds, 60)
-        XCTAssertTrue(c.gpuEnabled); XCTAssertEqual(c.gpuLimit, 100); XCTAssertEqual(c.gpuSustainSeconds, 120); XCTAssertEqual(c.gpuClearMargin, 10)
+        XCTAssertTrue(c.gpuEnabled); XCTAssertEqual(c.gpuLimit, 95); XCTAssertEqual(c.gpuSustainSeconds, 120); XCTAssertEqual(c.gpuClearMargin, 10)
         XCTAssertEqual(c.batteryTempLimit, 43); XCTAssertEqual(c.batteryTempSustainSeconds, 60); XCTAssertEqual(c.batteryTempClearMargin, 3)
         XCTAssertFalse(c.batteryHeatingEnabled); XCTAssertEqual(c.batteryHeatingRise, 2)
         XCTAssertEqual(c.thermalLimit, .serious); XCTAssertEqual(c.thermalSustainSeconds, 300)
@@ -90,7 +90,7 @@ final class ConfigTests: XCTestCase {
         XCTAssertEqual(c.cpuLimit, 75)
         XCTAssertEqual(c.cpuSustainSeconds, 20, "an edited rule keeps its old wait")
         XCTAssertEqual(c.capHours, 4)
-        XCTAssertEqual(c.gpuLimit, 100, "missing fields take the new default")
+        XCTAssertEqual(c.gpuLimit, 95, "missing fields take the new default")
         XCTAssertEqual(c.configVersion, Config.currentVersion)
         XCTAssertTrue(c.alertOnUnplug)
         XCTAssertEqual(c.schedule, .default)
@@ -140,7 +140,7 @@ final class ConfigTests: XCTestCase {
         XCTAssertEqual(c.cpuSustainSeconds, 20, "the CPU rule was edited, so its wait stays too")
         XCTAssertEqual(c.batteryTempLimit, 40)
         XCTAssertEqual(c.batteryTempSustainSeconds, 45)
-        XCTAssertEqual(c.gpuLimit, 100, "the untouched GPU rule still moves")
+        XCTAssertEqual(c.gpuLimit, 95, "the untouched GPU rule still moves")
         XCTAssertEqual(c.gpuSustainSeconds, 120)
         XCTAssertEqual(c.batteryTempClearMargin, 3)
     }
@@ -152,6 +152,28 @@ final class ConfigTests: XCTestCase {
         let back = try Config.decodeLenient(from: JSONEncoder().encode(mine))
         XCTAssertEqual(back.cpuLimit, 90)
         XCTAssertEqual(back.cpuSustainSeconds, 20)
+    }
+
+    /// What version 2 stored: the 102 / 100 defaults, in full.
+    private func v2Blob(_ overrides: [String: Any] = [:]) throws -> Data {
+        var d = try JSONSerialization.jsonObject(with: JSONEncoder().encode(Config())) as! [String: Any]
+        d["configVersion"] = 2
+        d["cpuLimit"] = 102; d["gpuLimit"] = 100
+        for (k, v) in overrides { d[k] = v }
+        return try JSONSerialization.data(withJSONObject: d)
+    }
+
+    func testUntouchedVersion2DefaultsMoveToBalanced() throws {
+        let c = try Config.decodeLenient(from: v2Blob())
+        XCTAssertEqual(c, Config())
+        XCTAssertEqual(c.cpuLimit, 100); XCTAssertEqual(c.gpuLimit, 95)
+    }
+
+    func testEditedVersion2LimitsStay() throws {
+        let c = try Config.decodeLenient(from: v2Blob(["cpuLimit": 104, "gpuSustainSeconds": 90]))
+        XCTAssertEqual(c.cpuLimit, 104)
+        XCTAssertEqual(c.gpuLimit, 100, "the GPU rule was edited (wait), so its limit stays too")
+        XCTAssertEqual(c.gpuSustainSeconds, 90)
     }
 
     func testMigrationIsIdempotent() throws {

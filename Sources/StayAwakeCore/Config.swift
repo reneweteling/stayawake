@@ -29,18 +29,18 @@ public enum ConfigRange {
 public struct Config: Codable, Equatable, Sendable {
     /// Bumped when stored settings need more than "missing keys take their
     /// default". See `decodeLenient`.
-    public static let currentVersion = 2
+    public static let currentVersion = 3
     public var configVersion = Config.currentVersion
     // CPU temperature, compared as the rolling average of the curated SMC keys
     public var cpuEnabled = true
-    public var cpuLimit: Double = 102
+    public var cpuLimit: Double = 100
     public var cpuSustainSeconds = 120
     public var cpuClearMargin: Double = 10
     /// Width of the rolling average for CPU and GPU. 0 compares each sample as it is.
     public var smoothingSeconds = 60
     // GPU temperature, same shape as CPU
     public var gpuEnabled = true
-    public var gpuLimit: Double = 100
+    public var gpuLimit: Double = 95
     public var gpuSustainSeconds = 120
     public var gpuClearMargin: Double = 10
     // Battery temperature, the hottest battery sensor. The main bag-safety rule.
@@ -163,14 +163,15 @@ public struct Config: Codable, Equatable, Sendable {
     }
 
     /// Version 1 compared the instant max of the CPU keys against 90 C for
-    /// 20 s, which trips during normal work on an M2 Max. Version 2 compares
-    /// a 60 s average against the Balanced limits. A rule the user never
-    /// touched (still at the version 1 default; a missing key counts as the
-    /// default) moves to the new defaults. Edited values stay as they are.
+    /// 20 s, which trips during normal work on an M2 Max. Version 2 compared
+    /// a 60 s average against 102 C (CPU) and 100 C (GPU). Version 3 sets
+    /// Balanced to 100 C and 95 C. A rule the user never touched (still at
+    /// the default of the version it was stored with; a missing key counts as
+    /// the default) moves to the new defaults. Edited values stay as they are.
     static func migrate(_ input: [String: Any]) -> [String: Any] {
         var stored = input
         let version = (stored["configVersion"] as? NSNumber)?.intValue ?? 1
-        guard version < 2 else { return stored }
+        guard version < 3 else { return stored }
         func number(_ key: String, default d: Double) -> Double { (stored[key] as? NSNumber)?.doubleValue ?? d }
         // Untouched: drop the keys so the new defaults apply. Edited: write
         // the missing ones as their version 1 default, so a stored limit
@@ -182,10 +183,15 @@ public struct Config: Codable, Equatable, Sendable {
                 for (k, v) in zip(keys, old) where stored[k] == nil { stored[k] = v }
             }
         }
-        reset(["cpuLimit", "cpuSustainSeconds"], ifAt: [90, 20])
-        reset(["gpuLimit", "gpuSustainSeconds"], ifAt: [85, 20])
-        reset(["batteryTempLimit", "batteryTempSustainSeconds"], ifAt: [40, 30])
-        reset(["batteryTempClearMargin"], ifAt: [4])
+        if version < 2 {
+            reset(["cpuLimit", "cpuSustainSeconds"], ifAt: [90, 20])
+            reset(["gpuLimit", "gpuSustainSeconds"], ifAt: [85, 20])
+            reset(["batteryTempLimit", "batteryTempSustainSeconds"], ifAt: [40, 30])
+            reset(["batteryTempClearMargin"], ifAt: [4])
+        } else {
+            reset(["cpuLimit", "cpuSustainSeconds"], ifAt: [102, 120])
+            reset(["gpuLimit", "gpuSustainSeconds"], ifAt: [100, 120])
+        }
         stored["configVersion"] = Config.currentVersion
         return stored
     }

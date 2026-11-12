@@ -5,8 +5,8 @@ final class DisplayTests: XCTestCase {
     func testReadoutsShowTheirLimits() {
         let c = Config()
         let s = Snapshot(cpuTemperature: 58, gpuTemperature: 52, batteryTemperature: 34, batteryPercent: 71)
-        XCTAssertEqual(Readout.cpu(s, c), "CPU 58 °C / 102")
-        XCTAssertEqual(Readout.gpu(s, c), "GPU 52 °C / 100")
+        XCTAssertEqual(Readout.cpu(s, c), "CPU 58 °C / 100")
+        XCTAssertEqual(Readout.gpu(s, c), "GPU 52 °C / 95")
         XCTAssertEqual(Readout.batteryTemperature(s, c), "Battery 34 °C / 43")
         XCTAssertEqual(Readout.batteryLevel(s, c), "Battery 71% / stops at 20%")
     }
@@ -22,7 +22,7 @@ final class DisplayTests: XCTestCase {
 
     func testMissingReadingsAreShownAsNA() {
         let s = Snapshot(cpuTemperature: nil, gpuTemperature: nil, batteryPercent: nil)
-        XCTAssertEqual(Readout.cpu(s, Config()), "CPU n/a / 102")
+        XCTAssertEqual(Readout.cpu(s, Config()), "CPU n/a / 100")
         XCTAssertEqual(Readout.batteryLevel(s, Config()), "Battery n/a / stops at 20%")
     }
 
@@ -32,12 +32,12 @@ final class DisplayTests: XCTestCase {
         let sig = Signals(cpu: SignalReading(instant: 100, smoothed: 88.4, source: .smc, samples: 4),
                           gpu: SignalReading(instant: 70, smoothed: 70, source: .smc, samples: 4),
                           battery: SignalReading(instant: 35, smoothed: 35, source: .smc, samples: 1))
-        XCTAssertEqual(Readout.cpu(s, c, signals: sig), "CPU 88 °C / 102")
-        XCTAssertEqual(Readout.cpu(s, c), "CPU 100 °C / 102", "before the first decision: the instant value")
+        XCTAssertEqual(Readout.cpu(s, c, signals: sig), "CPU 88 °C / 100")
+        XCTAssertEqual(Readout.cpu(s, c), "CPU 100 °C / 100", "before the first decision: the instant value")
         XCTAssertEqual(Readout.instantNote(sig.cpu, unit: .celsius), "now 100")
         XCTAssertNil(Readout.instantNote(sig.gpu, unit: .celsius), "no note when they agree")
         let empty = Signals(cpu: SignalReading(instant: nil, smoothed: nil, source: .none, samples: 0), gpu: .none, battery: .none)
-        XCTAssertEqual(Readout.cpu(s, c, signals: empty), "CPU 100 °C / 102", "no samples yet: the instant value")
+        XCTAssertEqual(Readout.cpu(s, c, signals: empty), "CPU 100 °C / 100", "no samples yet: the instant value")
     }
 
     func testValueSplitsOffTheLabel() {

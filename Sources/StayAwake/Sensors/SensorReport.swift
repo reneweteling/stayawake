@@ -40,7 +40,7 @@ enum SensorReport {
                             now: Moment(monotonic: ProcessInfo.processInfo.systemUptime, wall: Date())).signals
     }
 
-    /// "now 85.2 C, avg 85.2 C (1 sample), limit 102 C"
+    /// "now 85.2 C, avg 85.2 C (1 sample), limit 100 C"
     private static func signalLine(_ s: SignalReading, limit: Double) -> String {
         "now \(t(s.instant)), avg \(t(s.smoothed)) (\(s.samples) sample\(s.samples == 1 ? "" : "s")), limit \(String(format: "%.0f C", limit))"
     }

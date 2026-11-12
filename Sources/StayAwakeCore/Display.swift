@@ -49,7 +49,7 @@ public enum Readout {
         ruleValue(snap.batteryTemperature, signals?.battery)
     }
 
-    /// "CPU 96 °C / 102", the 60 s average against the limit.
+    /// "CPU 96 °C / 100", the 60 s average against the limit.
     public static func cpu(_ snap: Snapshot, _ config: Config, unit: TemperatureUnit = .celsius, signals: Signals? = nil) -> String {
         temperature("CPU", cpuValue(snap, signals), limit: config.cpuLimit, unit: unit)
     }

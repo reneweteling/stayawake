@@ -103,7 +103,7 @@ final class SmoothingTests: XCTestCase {
         let balanced = replay { _ in }
         XCTAssertTrue(balanced.allSatisfy { $0.phase == .holding })
         let peak = balanced.compactMap(\.signals.cpu.smoothed).max()!
-        XCTAssertLessThan(peak, 97, "the 60 s average stays well under 102")
+        XCTAssertLessThan(peak, 97, "the 60 s average stays well under 100")
         let cautious = replay { $0 = SafetyPreset.cautious.apply(to: $0) }
         XCTAssertTrue(cautious.allSatisfy { $0.phase == .holding }, "even Cautious holds through normal work")
     }
@@ -161,7 +161,7 @@ final class SmoothingTests: XCTestCase {
     }
 
     func testSustainedHeatTripsAfterWindowAndWait() {
-        var rig = Rig()                                // Balanced: 102 C, 120 s
+        var rig = Rig()                                // Balanced: 100 C, 120 s
         rig.snap.cpuTemperature = 80
         rig.arm()
         rig.advance(60)

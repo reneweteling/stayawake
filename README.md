@@ -27,8 +27,8 @@ Status: early development. The core engine and the app shell exist, the switch i
 
 | Rule | Default |
 |---|---|
-| CPU temperature | 90 °C for 20 s, clears 10 °C lower |
-| GPU temperature | 85 °C for 20 s, clears 10 °C lower. A missing GPU sensor never trips the sensor failure rule |
+| CPU temperature | 100 °C (60 s average) for 120 s, clears 10 °C lower |
+| GPU temperature | 95 °C (60 s average) for 120 s, clears 10 °C lower. A missing GPU sensor never trips the sensor failure rule |
 | Battery temperature | 40 °C for 30 s, clears 4 °C lower |
 | Thermal pressure | serious or critical |
 | Battery floor | below 20% and not charging, clears at 30% or when charging |

@@ -39,10 +39,10 @@ public enum SafetyPreset: String, CaseIterable, Sendable {
     private var limits: Limits {
         switch self {
         case .cautious:
-            return Limits(cpu: 98, cpuSustain: 60, gpu: 95, gpuSustain: 60, battery: 40, batterySustain: 30,
+            return Limits(cpu: 95, cpuSustain: 60, gpu: 90, gpuSustain: 60, battery: 40, batterySustain: 30,
                           thermal: .serious, thermalSustain: 60, heating: true, heatingRise: 2, floor: 30)
         case .balanced:
-            return Limits(cpu: 102, cpuSustain: 120, gpu: 100, gpuSustain: 120, battery: 43, batterySustain: 60,
+            return Limits(cpu: 100, cpuSustain: 120, gpu: 95, gpuSustain: 120, battery: 43, batterySustain: 60,
                           thermal: .serious, thermalSustain: 300, heating: false, heatingRise: 2, floor: 20)
         case .relaxed:
             return Limits(cpu: 106, cpuSustain: 180, gpu: 105, gpuSustain: 180, battery: 45, batterySustain: 60,

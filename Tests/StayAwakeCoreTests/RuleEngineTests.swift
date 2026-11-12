@@ -28,7 +28,7 @@ final class RuleEngineTests: XCTestCase {
     func testCpuDoesNotTripBelowLimit() {
         var rig = Rig()
         rig.arm()
-        rig.snap.cpuTemperature = 101.9
+        rig.snap.cpuTemperature = 99.9
         let ds = rig.advance(600)
         XCTAssertTrue(ds.allSatisfy { $0.phase == .holding })
     }
@@ -58,11 +58,11 @@ final class RuleEngineTests: XCTestCase {
         rig.arm()
         rig.snap.cpuTemperature = 107
         XCTAssertEqual(rig.eval().phase, .tripped)
-        rig.snap.cpuTemperature = 97
-        XCTAssertEqual(rig.advance(15, jitter: false).last?.rules, [.cpuTemperature], "still above 92")
-        rig.snap.cpuTemperature = 92.5
+        rig.snap.cpuTemperature = 95
+        XCTAssertEqual(rig.advance(15, jitter: false).last?.rules, [.cpuTemperature], "still above 90")
+        rig.snap.cpuTemperature = 90.5
         XCTAssertEqual(rig.advance(15, jitter: false).last?.rules, [.cpuTemperature])
-        rig.snap.cpuTemperature = 92
+        rig.snap.cpuTemperature = 90
         XCTAssertEqual(rig.advance(15, jitter: false).last?.rules, [], "clears at limit minus 10")
     }
 
@@ -85,7 +85,7 @@ final class RuleEngineTests: XCTestCase {
     func testGpuTripsLikeCpu() {
         var rig = Rig(tweak: mechanics)
         rig.arm()
-        rig.snap.gpuTemperature = 100
+        rig.snap.gpuTemperature = 95
         let ds = rig.advance(30, step: 10, jitter: false)
         XCTAssertEqual(ds[1].phase, .holding)
         XCTAssertEqual(ds[2].phase, .tripped)
@@ -96,13 +96,13 @@ final class RuleEngineTests: XCTestCase {
     func testGpuBelowLimitHysteresisAndSpike() {
         var rig = Rig(tweak: { $0.gpuSustainSeconds = 0; $0.smoothingSeconds = 0 })
         rig.arm()
-        rig.snap.gpuTemperature = 99.9
+        rig.snap.gpuTemperature = 94.9
         XCTAssertEqual(rig.eval().phase, .holding)
-        rig.snap.gpuTemperature = 100
+        rig.snap.gpuTemperature = 95
         XCTAssertEqual(rig.eval().phase, .tripped)
-        rig.snap.gpuTemperature = 91
+        rig.snap.gpuTemperature = 86
         XCTAssertEqual(rig.eval().rules, [.gpuTemperature])
-        rig.snap.gpuTemperature = 90
+        rig.snap.gpuTemperature = 85
         XCTAssertEqual(rig.eval().rules, [])
     }
 

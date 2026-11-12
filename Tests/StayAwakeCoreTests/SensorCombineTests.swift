@@ -47,7 +47,7 @@ final class SensorCombineTests: XCTestCase {
     }
 
     func testMeanDrivesTheCPURule() {
-        // Max 106 would trip a 102 limit at once; the mean 98 does not.
+        // Max 106 would trip a 100 limit at once; the mean 98 does not.
         var rig = Rig { $0.cpuSustainSeconds = 0 }
         let keys = [SMCKey(key: "Tp01", celsius: 106), SMCKey(key: "Tp05", celsius: 90)]
         rig.snap.cpuTemperature = SensorCombine.choose(.cpu, hid: 49, smc: keys, family: .m2).value
