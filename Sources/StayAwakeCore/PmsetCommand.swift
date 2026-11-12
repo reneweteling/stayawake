@@ -8,6 +8,10 @@ public enum PmsetCommand: String, CaseIterable, Codable, Sendable {
 
     public static let executable = "/usr/bin/pmset"
 
+    /// Read-only `pmset -g`, which the helper uses to report SleepDisabled.
+    /// Not a case on purpose: it changes nothing and is never chosen by input.
+    public static let readSettingsArgv = [executable, "-g"]
+
     public var arguments: [String] {
         switch self {
         case .disableSleepOn: return ["-a", "disablesleep", "1"]

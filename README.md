@@ -61,10 +61,13 @@ Requires macOS 14 or later on Apple Silicon and the Xcode Command Line Tools.
 
 ```bash
 StayAwake --simulate scenario.json   # run a scripted scenario through the rule engine
-StayAwake --status                   # not implemented yet
-StayAwake --report                   # not implemented yet
-StayAwake --restore                  # not implemented yet
+StayAwake --status                   # SleepDisabled and the current readings
+StayAwake --report                   # every reading, the raw sensor list and the chip
+StayAwake --restore                  # ask the helper for disablesleep 0
+StayAwake --helper-status            # helper registration, lease and version (read-only)
 ```
+
+Run them from inside the bundle, for example `/Applications/StayAwake.app/Contents/MacOS/StayAwake --helper-status`.
 
 `--simulate` feeds snapshots through the engine with a fake clock and prints every decision. It never touches power settings. The scenario format is documented in `Sources/StayAwakeCore/Simulator.swift`.
 

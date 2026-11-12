@@ -16,6 +16,14 @@ MACOS="$CONTENTS/MacOS"
 RES="$CONTENTS/Resources"
 
 CONFIGURATION="${CONFIGURATION:-release}"
+SIGN_IDENTITY="${SIGN_IDENTITY:--}"
+
+# Debug builds accept XPC peers by identifier alone. Such a build must never
+# carry a real signature, or any app claiming that identifier could talk to it.
+if [[ "$CONFIGURATION" != "release" && "$SIGN_IDENTITY" != "-" ]]; then
+    echo "✗ Refusing to sign a $CONFIGURATION build with '$SIGN_IDENTITY'. Use CONFIGURATION=release."
+    exit 1
+fi
 
 echo "→ Building SwiftPM executable ($CONFIGURATION)..."
 cd "$REPO_ROOT"
@@ -56,8 +64,16 @@ rm -rf "$APP_DIR"
 mkdir -p "$MACOS" "$RES" "$CONTENTS/Library/LaunchDaemons"
 cp "$EXEC_SRC" "$MACOS/$APP_NAME"
 cp "$HELPER_SRC" "$MACOS/$HELPER_NAME"
+# SMAppService.daemon(plistName:) looks in Contents/Library/LaunchDaemons;
+# BundleProgram in that plist is relative to the app bundle.
 cp "$REPO_ROOT/Sources/StayAwakeHelper/Resources/$HELPER_PLIST" "$CONTENTS/Library/LaunchDaemons/$HELPER_PLIST"
 cp "$REPO_ROOT/Sources/StayAwake/Resources/Info.plist" "$CONTENTS/Info.plist"
+plutil -lint "$CONTENTS/Library/LaunchDaemons/$HELPER_PLIST" "$CONTENTS/Info.plist"
+BUNDLE_PROGRAM="$(/usr/libexec/PlistBuddy -c "Print :BundleProgram" "$CONTENTS/Library/LaunchDaemons/$HELPER_PLIST")"
+if [[ ! -x "$APP_DIR/$BUNDLE_PROGRAM" ]]; then
+    echo "✗ BundleProgram $BUNDLE_PROGRAM is not an executable inside the bundle"
+    exit 1
+fi
 # The About tab reads the logo through Bundle.main.
 cp "$REPO_ROOT/Sources/StayAwake/Resources/weteling-logo.svg" "$RES/weteling-logo.svg"
 if [[ -f "$BUILD_DIR/AppIcon.icns" ]]; then
@@ -68,7 +84,6 @@ fi
 
 # The helper is signed first, then the app, so the app seal covers the signed
 # helper. No --deep: each executable gets its own signature.
-SIGN_IDENTITY="${SIGN_IDENTITY:--}"
 if [[ "$SIGN_IDENTITY" == "-" ]]; then
     echo "→ Ad-hoc signing helper, then app..."
     codesign --force --sign - --identifier com.weteling.stayawake.helper "$MACOS/$HELPER_NAME"
@@ -79,6 +94,16 @@ else
         --sign "$SIGN_IDENTITY" "$MACOS/$HELPER_NAME"
     codesign --force --options runtime --timestamp --sign "$SIGN_IDENTITY" "$APP_DIR"
 fi
+
+echo "→ Verifying signatures..."
+codesign --verify --strict "$MACOS/$HELPER_NAME"
+codesign --verify --strict --deep "$APP_DIR"
+HELPER_ID="$(codesign -dv "$MACOS/$HELPER_NAME" 2>&1 | sed -n 's/^Identifier=//p')"
+if [[ "$HELPER_ID" != "com.weteling.stayawake.helper" ]]; then
+    echo "✗ Helper identifier is '$HELPER_ID'"
+    exit 1
+fi
+echo "✓ Signatures valid, helper identifier $HELPER_ID"
 
 echo "→ Removing quarantine flag..."
 xattr -dr com.apple.quarantine "$APP_DIR" 2>/dev/null || true

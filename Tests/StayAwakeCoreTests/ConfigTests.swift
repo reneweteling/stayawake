@@ -44,7 +44,7 @@ final class ConfigTests: XCTestCase {
         XCTAssertEqual(k.batteryTempLimit, 30); XCTAssertEqual(k.batteryTempSustainSeconds, 300); XCTAssertEqual(k.batteryTempClearMargin, 10)
         XCTAssertEqual(k.thermalSustainSeconds, 600); XCTAssertEqual(k.batteryHeatingRise, 0.5); XCTAssertEqual(k.smoothingSeconds, 0)
         XCTAssertEqual(k.floorPercent, 5); XCTAssertEqual(k.lidMinutes, 480); XCTAssertEqual(k.idleCpuPercent, 50); XCTAssertEqual(k.idleMinutes, 5)
-        XCTAssertEqual(k.watchedMinutes, 5); XCTAssertEqual(k.networkMinutes, 2); XCTAssertEqual(k.capHours, 24); XCTAssertEqual(k.sensorFailureSeconds, 30)
+        XCTAssertEqual(k.watchedMinutes, 5); XCTAssertEqual(k.networkMinutes, 2); XCTAssertEqual(k.capHours, 12); XCTAssertEqual(k.sensorFailureSeconds, 30)
         XCTAssertEqual(k.headsUpMinutes, 30); XCTAssertEqual(k.logRetentionDays, 7); XCTAssertEqual(k.sampleMinutes, 60)
         XCTAssertEqual(k.holdingIntervalSeconds, 5); XCTAssertEqual(k.offIntervalSeconds, 300); XCTAssertEqual(k.leaseSeconds, 120)
     }
@@ -211,6 +211,13 @@ final class ConfigTests: XCTestCase {
         let once = try Config.decodeLenient(from: v1Blob(["gpuLimit": 80]))
         let twice = try Config.decodeLenient(from: JSONEncoder().encode(once))
         XCTAssertEqual(once, twice)
+    }
+
+    func testStoredCapAboveTwelveHoursLoadsAsTwelve() throws {
+        let stored = Data(#"{"capHours": 24}"#.utf8)
+        let c = try Config.decodeLenient(from: stored)
+        XCTAssertEqual(c.capHours, 12)
+        XCTAssertEqual(ConfigRange.capHours, 1...12)
     }
 
     func testRangesComeFromOnePlace() {

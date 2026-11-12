@@ -47,12 +47,13 @@ final class SudoersPmsetBackend: PmsetBackend, @unchecked Sendable {
             FixedProcess.run(["/usr/bin/sudo", "-n", "-l"] + cmd.argv)?.status == 0
         }
         let value: BackendAvailability = allowed ? .ready
-            : .setupRequired("Dev backend needs the sudoers rule. Run scripts/dev-sudoers.sh once in a terminal.")
+            : .setupRequired(SetupNeed(title: "Dev backend needs the sudoers rule",
+                                       detail: "Run scripts/dev-sudoers.sh once in a terminal.", action: .none))
         cached = (value, Date())
         return value
     }
 
-    func hold(leaseSeconds: Int) throws {
+    func hold(leaseSeconds: Int, reason: String) throws {
         try run(.disableSleepOn)
         try writeHeartbeat()
         startWatchdog(leaseSeconds: leaseSeconds)
@@ -62,7 +63,7 @@ final class SudoersPmsetBackend: PmsetBackend, @unchecked Sendable {
         try? writeHeartbeat()
     }
 
-    func release() throws {
+    func release(reason: String) throws {
         defer { lock.lock(); cached = nil; lock.unlock() }
         try run(.disableSleepOff)
         // Removing the file tells the watchdog the release was deliberate.

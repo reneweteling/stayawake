@@ -20,6 +20,8 @@ public enum ConfigRange {
     public static let thermalSustainSeconds: ClosedRange<Int> = 0...600
     public static let batteryHeatingRise: ClosedRange<Double> = 0.5...10
     public static let smoothingSeconds: ClosedRange<Int> = 0...300
+    /// Hard time cap in hours. The helper enforces 12 h per hold regardless.
+    public static let capHours: ClosedRange<Int> = 1...12
 }
 
 /// Everything the core needs to know about the user's settings, as a plain
@@ -134,7 +136,7 @@ public struct Config: Codable, Equatable, Sendable {
         if c.watchedNames.isEmpty { c.watchedNames = ["claude"] }
         c.watchedMinutes = clamp(c.watchedMinutes, 5, 240)
         c.networkMinutes = clamp(c.networkMinutes, 2, 120)
-        c.capHours = clamp(c.capHours, 1, 24)
+        c.capHours = clamp(c.capHours, R.capHours)
         c.sensorFailureSeconds = clamp(c.sensorFailureSeconds, 30, 300)
         c.schedule = c.schedule.normalized()
         c.headsUpMinutes = clamp(c.headsUpMinutes, 0, 30)

@@ -258,7 +258,7 @@ private struct SafetyTab: View {
                 RuleToggle(title: "Stop after a maximum time", detail: "Ends even when everything else is fine.",
                            isOn: $settings.config.capEnabled)
                 if settings.config.capEnabled {
-                    NumberRow(label: "Maximum", value: $settings.config.capHours, range: 1...24) { Fmt.hours($0) }
+                    NumberRow(label: "Maximum", value: $settings.config.capHours, range: ConfigRange.capHours) { Fmt.hours($0) }
                 }
             } header: {
                 Text("Time")
@@ -697,6 +697,7 @@ private struct AdvancedTab: View {
     @ObservedObject var model: AppModel
 
     private var unit: TemperatureUnit { settings.temperatureUnit }
+    @State private var confirmRemove = false
 
     var body: some View {
         Form {
@@ -760,6 +761,24 @@ private struct AdvancedTab: View {
             Section("Sleep control") {
                 LabeledContent("Method", value: model.backend.name)
                 LabeledContent("Status", value: model.setupMessage ?? "Ready")
+                if let need = model.setupNeed {
+                    Text(need.detail).note()
+                }
+                if let info = model.helperInfo {
+                    LabeledContent("Helper", value: info)
+                }
+                if model.helper != nil {
+                    HStack {
+                        if let need = model.setupNeed, let title = need.actionTitle {
+                            Button(title) { model.performSetupAction() }
+                        }
+                        Spacer()
+                        Button("Reinstall Helper") { model.reinstallHelper() }
+                            .help("Turn sleep back on, then register the helper again")
+                        Button("Remove Helper…") { confirmRemove = true }
+                            .help("Turn sleep back on, then unregister the helper")
+                    }
+                }
                 HStack {
                     Button("Allow Sleep Now") { model.restoreSleepNow() }
                         .help("Turn normal Mac sleep back on right away")
@@ -770,6 +789,12 @@ private struct AdvancedTab: View {
             }
         }
         .formStyle(.grouped)
+        .onAppear { model.refreshHelperInfoNow() }
+        .confirmationDialog("Remove the sleep control helper?", isPresented: $confirmRemove) {
+            Button("Remove Helper", role: .destructive) { model.removeHelper() }
+        } message: {
+            Text("StayAwake turns normal sleep back on first. To keep the Mac awake again later, set up sleep control once more.")
+        }
     }
 
     private func exportLog() {
@@ -787,7 +812,7 @@ private struct AdvancedTab: View {
         let lines = [
             "StayAwake \(Telemetry.appVersion)",
             "macOS \(ProcessInfo.processInfo.operatingSystemVersionString)",
-            "backend: \(model.backend.name), \(model.setupMessage ?? "ready")",
+            "backend: \(model.backend.name), \(model.setupMessage ?? "ready")\(model.helperInfo.map { ", \($0)" } ?? "")",
             "phase: \(model.engine.phase.rawValue), SleepDisabled: \(model.sleepDisabled.map { $0 ? "1" : "0" } ?? "unknown")",
             "CPU \(s.cpuTemperature.map { String(format: "%.1f", $0) } ?? "n/a"), GPU \(s.gpuTemperature.map { String(format: "%.1f", $0) } ?? "n/a"), battery temp \(s.batteryTemperature.map { String(format: "%.1f", $0) } ?? "n/a")",
             "60 s average: CPU \(sig?.cpu.smoothed.map { String(format: "%.1f", $0) } ?? "n/a") (\(sig?.cpu.source.rawValue ?? "none")), GPU \(sig?.gpu.smoothed.map { String(format: "%.1f", $0) } ?? "n/a") (\(sig?.gpu.source.rawValue ?? "none"))",

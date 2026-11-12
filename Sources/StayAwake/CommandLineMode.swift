@@ -7,6 +7,7 @@ import StayAwakeCore
 ///     StayAwake --status    read-only summary: SleepDisabled and the readings
 ///     StayAwake --report    every reading, the raw HID sensor list and the chip
 ///     StayAwake --restore   asks the backend to turn sleep back on (disablesleep 0)
+///     StayAwake --helper-status   read-only: registration state and the helper's status
 ///
 /// Only --restore changes a power setting, and only back to normal sleep.
 enum CommandLineMode {
@@ -23,6 +24,7 @@ enum CommandLineMode {
         if args.contains("--status") { return SensorReport.status() }
         if args.contains("--report") { return SensorReport.report() }
         if args.contains("--restore") { return restore() }
+        if args.contains("--helper-status") { return helperStatus() }
         return nil
     }
 
@@ -30,7 +32,7 @@ enum CommandLineMode {
     private static func restore() -> Int32 {
         let backend = BackendFactory.make()
         do {
-            try backend.release()
+            try backend.release(reason: "cli")
         } catch {
             printError("Could not restore sleep with the \(backend.name) backend: \(error)")
             printError("Run this by hand:")
@@ -40,6 +42,30 @@ enum CommandLineMode {
         let state = ReadOnlyCommand.pmsetG().map(PmsetParser.parse)?.sleepDisabled
         print("Sleep restored. SleepDisabled: \(state.map { $0 ? "1 (still on)" : "0 (off)" } ?? "unknown")")
         return state == true ? 1 : 0
+    }
+
+    private static func helperStatus() -> Int32 {
+        let backend = BackendFactory.make()
+        print("backend: \(backend.name)")
+        switch backend.availability() {
+        case .ready: print("registration: enabled")
+        case .setupRequired(let need): print("registration: \(need.title). \(need.detail)")
+        }
+        guard let helper = backend as? HelperManaging else { return 0 }
+        guard let status = helper.helperStatus() else {
+            print("helper: no answer")
+            return 1
+        }
+        let encoder = JSONEncoder()
+        encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
+        encoder.dateEncodingStrategy = .iso8601
+        if let data = try? encoder.encode(status) { print(String(decoding: data, as: UTF8.self)) }
+        switch helper.versionVerdict() {
+        case .current: print("version: matches this app")
+        case .replace(let why): print("version: differs (\(why)); the app re-registers it on launch")
+        case .unknown: print("version: unknown")
+        }
+        return 0
     }
 
     private static func simulate(path: String) -> Int32 {

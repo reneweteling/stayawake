@@ -33,6 +33,8 @@ final class AppModel: ObservableObject {
     @Published private(set) var message: String?
     @Published private(set) var lastEvent = "No events yet"
     @Published private(set) var unplugBanner = false
+    /// One line about the helper for Settings, Advanced (version, lease).
+    @Published private(set) var helperInfo: String?
     @Published var armDuration: ArmDuration
     @Published var popoverOpen = false {
         didSet {
@@ -63,6 +65,7 @@ final class AppModel: ObservableObject {
     private var headsUpSent = Set<RuleID>()
     private var lastSampleLog: TimeInterval?
     private var lastSnapshotForEvents: Snapshot?
+    private var helperReplaced = false
 
     private init() {
         backend = BackendFactory.make()
@@ -75,10 +78,12 @@ final class AppModel: ObservableObject {
 
     var isArmed: Bool { engine.phase == .waiting || engine.phase == .holding }
     var config: Config { settings.config.clamped() }
-    var setupMessage: String? {
-        if case .setupRequired(let text) = availability { return text }
+    var setupNeed: SetupNeed? {
+        if case .setupRequired(let need) = availability { return need }
         return nil
     }
+    var setupMessage: String? { setupNeed?.title }
+    var helper: HelperManaging? { backend as? HelperManaging }
 
     // MARK: - Start and stop
 
@@ -111,9 +116,10 @@ final class AppModel: ObservableObject {
             sleepDisabled = reading.pmset?.sleepDisabled
             snapshot = reading.snapshot
             await refreshAvailability()
+            await checkHelperVersion()
             // Q11: StayAwake owns the flag, so a leftover one is cleared.
             if settings.clearLeftoverOnLaunch, sleepDisabled == true, availability == .ready {
-                let error = await backendCall { [backend] in try backend.release() }
+                let error = await backendCall { [backend] in try backend.release(reason: "leftover") }
                 if let error {
                     note("Could not clear a leftover SleepDisabled: \(error)", event: "leftover_failed")
                 } else {
@@ -133,7 +139,7 @@ final class AppModel: ObservableObject {
             let (state, action) = RuleEngine.disarm(engine)
             engine = state
             if action == .release || heldByUs {
-                _ = await backendCall { [backend] in try backend.release() }
+                _ = await backendCall { [backend] in try backend.release(reason: "quit") }
                 heldByUs = false
             }
             record(entry("quit"))
@@ -157,7 +163,7 @@ final class AppModel: ObservableObject {
             engine = state
             message = nil
             headsUpSent = []
-            if action == .release { await releaseWithRetries() }
+            if action == .release { await releaseWithRetries(reason: "disarm") }
             note("Disarmed at \(clockNow())", event: "disarm")
             if config.notifyOnManualArm { NotificationManager.shared.notifyArmed("Disarmed. Normal sleep is back.") }
             await finishEvaluation(reason: "disarm")
@@ -181,7 +187,7 @@ final class AppModel: ObservableObject {
         enqueue { [self] in
             engine = RuleEngine.disarm(engine).state
             headsUpSent = []
-            if let error = await releaseOnce() {
+            if let error = await releaseOnce(reason: "restore") {
                 message = "Could not restore sleep: \(error). Run \(BackendFactory.manualRestoreCommand) in a terminal."
                 note("Restore sleep failed: \(error)", event: "restore_failed")
             } else {
@@ -195,13 +201,140 @@ final class AppModel: ObservableObject {
 
     func dismissMessage() { message = nil }
 
+    // MARK: - Helper setup
+
+    /// The button next to the setup text: register, or open Login Items.
+    func performSetupAction() {
+        guard let need = setupNeed else { return }
+        switch need.action {
+        case .register: enqueue { [self] in await registerHelper() }
+        case .openLoginItems: helper?.openApprovalSettings()
+        case .none: break
+        }
+    }
+
+    func openLoginItems() { helper?.openApprovalSettings() }
+
+    /// Settings, Advanced: unregister and register again. Releases first.
+    func reinstallHelper() {
+        enqueue { [self] in
+            guard let helper else { return }
+            await disarmForHelperChange()
+            let error = await backendCall { try helper.reinstall() }
+            await refreshAvailability()
+            if let error {
+                message = "Could not reinstall the helper: \(error)"
+                note("Helper reinstall failed: \(error)", event: "helper_reinstall_failed")
+            } else {
+                note(availability == .ready ? "Helper reinstalled" : "Helper reinstalled, waiting for approval", event: "helper_reinstalled")
+            }
+            await refreshHelperInfo()
+            updateStatus()
+        }
+    }
+
+    /// Settings, Advanced: release, then unregister. Stops if the release fails,
+    /// so removing the helper never leaves sleep disabled.
+    func removeHelper() {
+        enqueue { [self] in
+            guard let helper else { return }
+            if availability == .ready {
+                engine = RuleEngine.disarm(engine).state
+                headsUpSent = []
+                if let error = await releaseOnce(reason: "remove") {
+                    message = "Helper not removed, sleep could not be restored first: \(error)"
+                    note("Helper removal stopped: \(error)", event: "helper_remove_failed")
+                    await finishEvaluation(reason: "remove")
+                    return
+                }
+            }
+            let error = await backendCall { try helper.remove() }
+            await refreshAvailability()
+            if let error {
+                message = "Could not remove the helper: \(error)"
+                note("Helper removal failed: \(error)", event: "helper_remove_failed")
+            } else {
+                note("Helper removed. Sleep control is off until you set it up again.", event: "helper_removed")
+            }
+            helperInfo = nil
+            await finishEvaluation(reason: "remove")
+        }
+    }
+
+    /// Settings, Advanced opens: ask the helper how it is doing.
+    func refreshHelperInfoNow() { enqueue { [self] in await refreshHelperInfo() } }
+
+    private func registerHelper() async {
+        guard let helper else { return }
+        let error = await backendCall { try helper.register() }
+        await refreshAvailability()
+        if let error {
+            message = "Could not set up sleep control: \(error)"
+            note("Helper registration failed: \(error)", event: "helper_register_failed")
+        } else if availability != .ready {
+            note("Helper installed, waiting for approval in Login Items", event: "helper_registered")
+        }
+        updateStatus()
+    }
+
+    /// Launch check: the running helper must be the one in this bundle (same
+    /// version and same binary). If not, register again, once per launch.
+    private func checkHelperVersion() async {
+        guard let helper, availability == .ready, !helperReplaced else { return }
+        let verdict: HelperVersionCheck.Verdict = await withCheckedContinuation { c in
+            backendQueue.async { c.resume(returning: helper.versionVerdict()) }
+        }
+        if case .replace(let why) = verdict {
+            helperReplaced = true
+            let error = await backendCall { try helper.reinstall() }
+            await refreshAvailability()
+            if let error {
+                note("Helper update failed (\(why)): \(error)", event: "helper_update_failed")
+            } else {
+                note("Helper updated (\(why))", event: "helper_updated")
+            }
+        }
+        await refreshHelperInfo()
+    }
+
+    private func refreshHelperInfo() async {
+        guard let helper else { helperInfo = nil; return }
+        let status: HelperStatus? = await withCheckedContinuation { c in
+            backendQueue.async { c.resume(returning: helper.helperStatus()) }
+        }
+        guard let status else {
+            helperInfo = availability == .ready ? "Helper not answering" : nil
+            return
+        }
+        var parts = ["Helper \(status.version)"]
+        if status.held, let left = status.leaseRemaining {
+            parts.append("holding, lease \(Int(left)) s")
+        } else {
+            parts.append("not holding")
+        }
+        if let until = status.holdsBlockedUntil { parts.append("holds blocked until \(Readout.clock(until, in: .current))") }
+        if let error = status.lastError { parts.append("last error: \(error)") }
+        helperInfo = parts.joined(separator: ", ")
+    }
+
+    /// Before the helper goes away: disarm and release while it can still answer.
+    private func disarmForHelperChange() async {
+        guard availability == .ready else { return }
+        engine = RuleEngine.disarm(engine).state
+        headsUpSent = []
+        _ = await releaseOnce(reason: "helper-change")
+        await finishEvaluation(reason: "helper-change")
+    }
+
     // MARK: - Arm
 
     private func performArm(manual: Bool) async {
         message = nil
         await refreshAvailability()
-        if case .setupRequired(let text) = availability {
-            message = text
+        // First arm installs the helper. Whatever is still missing after
+        // that shows once in the popover, with its button.
+        if setupNeed?.action == .register { await registerHelper() }
+        if setupNeed != nil {
             updateStatus()
             return
         }
@@ -289,7 +422,7 @@ final class AppModel: ObservableObject {
 
         switch d.action {
         case .hold:
-            if let error = await backendCall({ [backend, lease = cfg.leaseSeconds] in try backend.hold(leaseSeconds: lease) }) {
+            if let error = await backendCall({ [backend, lease = cfg.leaseSeconds] in try backend.hold(leaseSeconds: lease, reason: "rules") }) {
                 // Nothing was held, so the engine must not think it is.
                 engine = RuleEngine.disarm(engine).state
                 message = "Could not keep this Mac awake: \(error)"
@@ -300,7 +433,7 @@ final class AppModel: ObservableObject {
                 if before != .holding { note("Holding since \(clockNow())", event: "hold", snapshot: snap) }
             }
         case .release:
-            await releaseWithRetries()
+            await releaseWithRetries(reason: d.trip != nil ? "trip" : (d.timerEnded ? "timer" : "rules"))
             if d.trip != nil || d.timerEnded { scheduleSleepNowFallback() }
         case .none:
             break
@@ -312,7 +445,7 @@ final class AppModel: ObservableObject {
         // The UI shows what the system says. If we hold but the system says
         // sleep is allowed (a watchdog fired, a wake), put the hold back.
         if engine.phase == .holding, d.action != .hold, sleepDisabled == false, heldByUs {
-            if let error = await backendCall({ [backend, lease = cfg.leaseSeconds] in try backend.hold(leaseSeconds: lease) }) {
+            if let error = await backendCall({ [backend, lease = cfg.leaseSeconds] in try backend.hold(leaseSeconds: lease, reason: "reassert") }) {
                 message = "SleepDisabled went off and could not be set again: \(error)"
                 note("Reassert failed: \(error)", event: "reassert_failed", snapshot: snap)
             } else {
@@ -395,18 +528,18 @@ final class AppModel: ObservableObject {
         }
     }
 
-    private func releaseOnce() async -> String? {
-        let error = await backendCall { [backend] in try backend.release() }
+    private func releaseOnce(reason: String) async -> String? {
+        let error = await backendCall { [backend] in try backend.release(reason: reason) }
         if error == nil { heldByUs = false }
         return error
     }
 
     /// Spec section 5: ask for disablesleep 0, retry 3 times, 1 s apart.
-    private func releaseWithRetries() async {
+    private func releaseWithRetries(reason: String) async {
         var last: String?
         for attempt in 0..<3 {
             if attempt > 0 { try? await Task.sleep(for: .seconds(1)) }
-            last = await releaseOnce()
+            last = await releaseOnce(reason: reason)
             if last == nil { return }
         }
         let text = "StayAwake could not restore sleep (\(last ?? "unknown")). Run \(BackendFactory.manualRestoreCommand) in a terminal."
@@ -434,7 +567,14 @@ final class AppModel: ObservableObject {
         let value: BackendAvailability = await withCheckedContinuation { c in
             backendQueue.async { [backend] in c.resume(returning: backend.availability()) }
         }
-        if availability != value { availability = value }
+        guard availability != value else { return }
+        let wasSetup = setupNeed != nil
+        availability = value
+        // The approval in System Settings happened outside the app.
+        if wasSetup, value == .ready, backend is HelperManaging {
+            note("Helper ready", event: "helper_ready")
+            await refreshHelperInfo()
+        }
     }
 
     // MARK: - Heartbeat

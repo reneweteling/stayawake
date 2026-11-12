@@ -15,6 +15,7 @@ struct PopoverView: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
             header
+            if let need = model.setupNeed, !model.isArmed { setupCard(need) }
             if model.unplugBanner { banner("Unplugged. StayAwake keeps this Mac awake on battery.", color: .orange) }
             if let text = model.message { banner(text, color: .red, dismiss: model.dismissMessage) }
             if model.engine.phase == .tripped { trippedBlock }
@@ -49,7 +50,9 @@ struct PopoverView: View {
                 Toggle("Stay awake", isOn: armedBinding)
                     .toggleStyle(.switch)
                     .labelsHidden()
-                    .disabled(model.setupMessage != nil && !model.isArmed)
+                    // Arming installs the helper, so only block it when the
+                    // user has to act elsewhere first.
+                    .disabled(!model.isArmed && model.setupNeed.map { $0.action != .register } ?? false)
             }
             Text(subtitle)
                 .font(.caption)
@@ -61,7 +64,7 @@ struct PopoverView: View {
     private var subtitle: String {
         switch model.engine.phase {
         case .off:
-            return model.setupMessage ?? "Off. This Mac sleeps as usual."
+            return "Off. This Mac sleeps as usual."
         case .waiting:
             return model.status.tooltip
         case .holding:
@@ -74,6 +77,25 @@ struct PopoverView: View {
         case .tripped:
             return "Stopped. The Mac sleeps as usual again."
         }
+    }
+
+    /// Sleep control is missing: said once, with the one thing to do about it.
+    private func setupCard(_ need: SetupNeed) -> some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Label(need.title, systemImage: MenuBarStatus.setupSymbol)
+                .font(.callout.weight(.semibold))
+            Text(need.detail)
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+            if let title = need.actionTitle {
+                Button(title) { model.performSetupAction() }
+                    .controlSize(.small)
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(8)
+        .background(Color.accentColor.opacity(0.10), in: RoundedRectangle(cornerRadius: 6))
     }
 
     private func banner(_ text: String, color: Color, dismiss: (() -> Void)? = nil) -> some View {
