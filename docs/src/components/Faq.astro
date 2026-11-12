@@ -1,0 +1,30 @@
+---
+import { faq } from '../data/faq';
+---
+<section class="block" id="faq">
+  <div class="wrap narrow">
+    <div class="sec-head" data-reveal>
+      <span class="kicker">FAQ</span>
+      <h2>Questions.</h2>
+    </div>
+    {faq.map(([q, a], i) => (
+      <details open={i === 0} data-reveal style={`--d:${i * 60}ms`}>
+        <summary>{q}</summary>
+        <p>{a}</p>
+      </details>
+    ))}
+  </div>
+</section>
+<style>
+  .narrow { max-width: 820px; }
+  details { border-top: 1px solid var(--line); padding: 22px 0; }
+  details:last-child { border-bottom: 1px solid var(--line); }
+  summary { cursor: pointer; list-style: none; font: 800 clamp(1.5rem, 3.5vw, 2.1rem)/1.1 var(--display); text-transform: uppercase; display: flex; justify-content: space-between; gap: 16px; align-items: center; }
+  summary::-webkit-details-marker { display: none; }
+  summary { transition: color .2s; }
+  summary:hover { color: var(--accent); }
+  summary::after { content: "+"; color: var(--accent); font-size: 2rem; line-height: 1; transition: transform .2s; }
+  details[open] summary::after { transform: rotate(45deg); }
+  details p { color: var(--muted); margin-top: 14px; max-width: 62ch; }
+  @media (prefers-reduced-motion: reduce) { summary::after { transition: none; } }
+</style>

@@ -1,0 +1,31 @@
+---
+const base = import.meta.env.BASE_URL.replace(/\/?$/, '/');
+const items = [
+  ['feature-schedule.webp', 'Schedule', 'Allowed hours per weekday.', 'Up to three windows a day. Outside them StayAwake lets go and the Mac sleeps again.', 'A glass weekly calendar with the night blocks glowing amber under a rising moon.'],
+  ['feature-unplug.webp', 'Unplug alert', 'The cable comes out.', 'StayAwake asks while it is armed: unplugged, stay awake? You decide before the battery does.', 'A USB-C cable pulled from a closed laptop, with an alert card asking to stay awake.'],
+];
+---
+<section class="block" id="features">
+  <div class="wrap">
+    <div class="grid">
+      {items.map(([img, k, t, p, alt], i) => (
+        <article data-reveal style={`--d:${i * 140}ms`}>
+          <figure class="figure"><img src={`${base}assets/${img}`} width="1200" height="898" loading="lazy" alt={alt} /></figure>
+          <span class="kicker">{k}</span>
+          <h3>{t}</h3>
+          <p>{p}</p>
+        </article>
+      ))}
+    </div>
+  </div>
+</section>
+<style>
+  #features { padding-bottom: 24px; }
+  .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 40px; }
+  article { display: grid; align-content: start; }
+  article .figure { margin-bottom: 24px; }
+  .kicker { margin-bottom: 12px; }
+  h3 { text-transform: uppercase; font-size: clamp(2rem, 4vw, 2.8rem); }
+  p { color: var(--muted); margin-top: 12px; max-width: 44ch; }
+  @media (max-width: 760px) { .grid { grid-template-columns: 1fr; gap: 56px; } }
+</style>

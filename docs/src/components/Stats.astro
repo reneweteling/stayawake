@@ -1,0 +1,23 @@
+---
+const stats = [
+  ['11', 'safety rules'],
+  ['2', 'commands the helper can run'],
+  ['60 s', 'until sleep returns after a crash'],
+  ['12 h', 'hard ceiling in the helper'],
+];
+---
+<div class="stats">
+  <div class="wrap row">
+    {stats.map(([n, l], i) => <div data-reveal style={`--d:${i * 90}ms`}><strong data-count>{n}</strong><span>{l}</span></div>)}
+  </div>
+</div>
+<style>
+  .stats { border-bottom: 1px solid var(--line); background: var(--surface); }
+  .row { display: grid; grid-template-columns: repeat(4, 1fr); }
+  .row div { padding: 30px 20px 30px 0; border-right: 1px solid var(--line); padding-left: 20px; }
+  .row div:first-child { padding-left: 0; }
+  .row div:last-child { border-right: 0; }
+  strong { display: block; font-variant-numeric: tabular-nums; font: 800 clamp(2.6rem, 6vw, 4.4rem)/1 var(--display); letter-spacing: -0.03em; color: var(--accent); }
+  span { color: var(--muted); font-size: 14px; }
+  @media (max-width: 640px) { .row { grid-template-columns: 1fr 1fr; } .row div { border-bottom: 1px solid var(--line); padding-left: 0; } .row div:nth-child(2n) { border-right: 0; padding-left: 20px; } .row div:nth-child(n+3) { border-bottom: 0; } }
+</style>

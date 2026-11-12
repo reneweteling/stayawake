@@ -1,0 +1,61 @@
+---
+const rows: [string, string, string][] = [
+  ['CPU and GPU', 'CPU die at or above 90 °C, GPU at or above 85 °C, for 20 s. Clears 10 °C lower.', 'Heat'],
+  ['Battery temperature', 'At or above 40 °C for 30 s. Clears 4 °C lower.', 'Heat'],
+  ['Thermal pressure', 'macOS reports serious or critical.', 'Heat'],
+  ['Battery floor', 'Below 20% and not charging. Clears at 30% or when charging.', 'Power'],
+  ['Schedule', 'Outside the allowed hours for that weekday. Up to three windows per day.', 'Clock'],
+  ['Lid on battery', 'Lid closed and unplugged for more than 90 min.', 'Clock'],
+  ['Idle', 'CPU below 10% for 15 min with the lid closed.', 'Activity'],
+  ['Watched process', 'No process from your list for 20 min. Off by default.', 'Activity'],
+  ['No network', 'No usable route for 15 min.', 'Activity'],
+  ['Time cap', 'Held for 8 h in one run.', 'Clock'],
+  ['Sensor failure', 'No valid temperature for 60 s. Unknown heat counts as hot.', 'Guard'],
+];
+const base = import.meta.env.BASE_URL.replace(/\/?$/, '/');
+---
+<section class="block alt" id="rules">
+  <div class="wrap">
+    <div class="sec-head split">
+      <div data-reveal>
+        <span class="kicker">Safety rules</span>
+        <h2>Eleven reasons<br />to let go.</h2>
+        <p class="sub">Every limit is a setting. These are the defaults.</p>
+      </div>
+      <figure class="figure" data-reveal style="--d:120ms"><img src={`${base}assets/feature-safety.webp`} width="1200" height="898" loading="lazy" alt="Three glass gauges for temperature, battery floor and time cap, all linked to a glowing crescent moon." /></figure>
+    </div>
+
+    <div class="tw" data-rows>
+      <table>
+        <thead><tr><th>Rule</th><th>Trips when</th><th>Kind</th></tr></thead>
+        <tbody>
+          {rows.map(([c, w, k], i) => (
+            <tr data-reveal style={`--d:${i * 60}ms`}>
+              <th scope="row">{c}</th>
+              <td>{w}</td>
+              <td class="mono">{k}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  </div>
+</section>
+<style>
+  .split { display: grid; grid-template-columns: 1fr 1.1fr; gap: 56px; align-items: center; }
+  @media (max-width: 860px) { .split { grid-template-columns: 1fr; gap: 32px; } }
+  .alt { background: var(--surface); border-block: 1px solid var(--line); }
+  .tw { overflow-x: auto; border: 1px solid var(--line); border-radius: 14px; }
+  table { border-collapse: collapse; width: 100%; min-width: 600px; font-size: 15px; }
+  th, td { text-align: left; padding: 16px 18px; border-bottom: 1px solid var(--line); vertical-align: top; }
+  tbody tr:last-child > * { border-bottom: 0; }
+  thead th { font: 600 11px/1 var(--mono); letter-spacing: .1em; text-transform: uppercase; color: var(--muted); background: var(--bg); }
+  tbody th { font: 800 1.3rem/1.1 var(--display); text-transform: uppercase; white-space: nowrap; }
+  td { color: var(--muted); }
+  td.mono { font-size: 13px; }
+  tbody tr { transition: background-color .5s; }
+  tbody tr:hover, tbody tr.lit { background: color-mix(in srgb, var(--accent) 9%, transparent); transition-duration: .15s; }
+  tbody tr.lit th { color: var(--accent); }
+  tbody th { transition: color .3s; }
+  tbody th { color: var(--ink); }
+</style>

@@ -1,0 +1,29 @@
+# StayAwake
+
+> StayAwake is a free macOS menu bar app (macOS 14+, Apple Silicon) that keeps a closed MacBook awake on battery and switches itself off before heat, a low battery or the clock make that a bad idea. Made by René Weteling (https://www.weteling.com).
+
+## What it does
+
+- One click in the menu bar runs pmset -a disablesleep 1 through a small root helper (SMAppService launchd daemon)
+- Shows CPU, GPU and battery temperature, battery level, time held and which rule is closest to tripping
+- Alerts when the power cable comes out while it is armed
+
+## Safety rules
+
+- Release on CPU, GPU or battery temperature, macOS thermal pressure, a battery floor, allowed hours per weekday, lid closed on battery for too long, idle, no network and a hard time cap
+- Unreadable sensors count as a trip
+- The helper holds a lease the app renews every 10 seconds. A crash, hang or force quit restores sleep within 60 seconds, a reboot restores it at boot, and a 12 hour ceiling applies no matter what
+- The helper can run exactly two commands, pmset -a disablesleep 1 and 0, and only accepts the signed StayAwake app
+
+## Facts
+
+- Price: free for noncommercial use, PolyForm Noncommercial 1.0.0
+- Distribution: signed and notarized DMG on GitHub releases, not the Mac App Store (it needs a root helper)
+- Privacy: no sensor data leaves the Mac; only crash reports go to Sentry, without paths, and they can be switched off
+
+## Links
+
+- Website: https://reneweteling.github.io/stayawake/
+- Download: https://github.com/reneweteling/stayawake/releases/latest/download/StayAwake.dmg
+- Source: https://github.com/reneweteling/stayawake
+- Maker: https://www.weteling.com

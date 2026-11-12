@@ -1,0 +1,132 @@
+---
+import '../styles/global.css';
+import Hero from '../components/Hero.astro';
+import Stats from '../components/Stats.astro';
+import Cleans from '../components/Cleans.astro';
+import Decides from '../components/Decides.astro';
+import Features from '../components/Features.astro';
+import Steps from '../components/Steps.astro';
+import Faq from '../components/Faq.astro';
+import Maker from '../components/Maker.astro';
+import Footer from '../components/Footer.astro';
+import Motion from '../components/Motion.astro';
+import { faq } from '../data/faq';
+
+const base = import.meta.env.BASE_URL.replace(/\/?$/, '/');
+const title = 'StayAwake: keep a closed MacBook awake on battery, and stop in time';
+const description = 'Free macOS menu bar app that keeps a closed MacBook awake on battery. A root helper with a lease restores sleep on a crash, a quit or a reboot, and safety rules release it before heat, a low battery or the clock make it a bad idea.';
+const site = 'https://reneweteling.github.io/stayawake/';
+const ogImage = `${site}assets/og.png`;
+const ogAlt = 'StayAwake: stay awake, then stop. Menu bar app for a closed MacBook.';
+const download = 'https://github.com/reneweteling/stayawake/releases/latest/download/StayAwake.dmg';
+
+const person = {
+  '@type': 'Person',
+  '@id': 'https://www.weteling.com/#person',
+  name: 'René Weteling',
+  url: 'https://www.weteling.com',
+  image: `${site}assets/rene.jpg`,
+  sameAs: ['https://github.com/reneweteling'],
+};
+const jsonLd = {
+  '@context': 'https://schema.org',
+  '@graph': [
+    {
+      '@type': 'WebSite',
+      '@id': `${site}#website`,
+      url: site,
+      name: 'StayAwake',
+      inLanguage: 'en',
+      publisher: { '@id': person['@id'] },
+    },
+    {
+      '@type': 'SoftwareApplication',
+      '@id': `${site}#app`,
+      name: 'StayAwake',
+      description,
+      url: site,
+      image: `${site}assets/icon.png`,
+      applicationCategory: 'UtilitiesApplication',
+      operatingSystem: 'macOS 14 or later (Apple Silicon)',
+      downloadUrl: download,
+      installUrl: download,
+      license: 'https://polyformproject.org/licenses/noncommercial/1.0.0',
+      isAccessibleForFree: true,
+      offers: { '@type': 'Offer', price: '0', priceCurrency: 'EUR' },
+      featureList: [
+        'One click keeps a closed MacBook awake on battery',
+        'Root helper with a lease: sleep returns after a crash, a quit or a reboot',
+        'Releases on CPU, GPU or battery heat, thermal pressure and a low battery',
+        'Allowed hours per weekday, lid-closed time limit, idle, no network and a hard time cap',
+        'Unreadable sensors count as a trip',
+        'Alert when the power cable comes out while armed',
+      ],
+      author: { '@id': person['@id'] },
+    },
+    person,
+    {
+      '@type': 'FAQPage',
+      '@id': `${site}#faq`,
+      mainEntity: faq.map(([q, a]) => ({ '@type': 'Question', name: q, acceptedAnswer: { '@type': 'Answer', text: a } })),
+    },
+  ],
+};
+---
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>{title}</title>
+    <meta name="description" content={description} />
+    <link rel="canonical" href={site} />
+    <meta name="author" content="René Weteling" />
+    <meta name="robots" content="index, follow, max-image-preview:large" />
+    <meta name="theme-color" content="#0d1517" />
+    <meta name="color-scheme" content="dark" />
+
+    <meta property="og:type" content="website" />
+    <meta property="og:site_name" content="StayAwake" />
+    <meta property="og:locale" content="en_US" />
+    <meta property="og:url" content={site} />
+    <meta property="og:title" content="StayAwake: stay awake. Then stop." />
+    <meta property="og:description" content={description} />
+    <meta property="og:image" content={ogImage} />
+    <meta property="og:image:secure_url" content={ogImage} />
+    <meta property="og:image:type" content="image/png" />
+    <meta property="og:image:width" content="1200" />
+    <meta property="og:image:height" content="630" />
+    <meta property="og:image:alt" content={ogAlt} />
+
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:title" content="StayAwake: stay awake. Then stop." />
+    <meta name="twitter:description" content={description} />
+    <meta name="twitter:image" content={ogImage} />
+    <meta name="twitter:image:alt" content={ogAlt} />
+
+    <link rel="icon" type="image/svg+xml" href={`${base}favicon.svg`} />
+    <link rel="icon" type="image/x-icon" sizes="16x16 32x32 48x48" href={`${base}favicon.ico`} />
+    <link rel="icon" type="image/png" sizes="32x32" href={`${base}favicon-32.png`} />
+    <link rel="icon" type="image/png" sizes="16x16" href={`${base}favicon-16.png`} />
+    <link rel="icon" type="image/png" sizes="192x192" href={`${base}icon-192.png`} />
+    <link rel="icon" type="image/png" sizes="512x512" href={`${base}icon-512.png`} />
+    <link rel="apple-touch-icon" sizes="180x180" href={`${base}apple-touch-icon.png`} />
+    <link rel="manifest" href={`${base}site.webmanifest`} />
+    <link rel="sitemap" href={`${base}sitemap.xml`} />
+    <link rel="alternate" type="text/plain" title="LLM summary" href={`${base}llms.txt`} />
+    <script is:inline>document.documentElement.classList.add("js");setTimeout(function(){document.documentElement.classList.add("rv-fail")},4000)</script>
+    <script type="application/ld+json" set:html={JSON.stringify(jsonLd)} />
+  </head>
+  <body>
+    <Hero />
+    <Stats />
+    <Cleans />
+    <Features />
+    <Decides />
+    <Steps />
+    <Faq />
+    <Maker />
+    <Footer />
+    <Motion />
+  </body>
+</html>
