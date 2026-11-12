@@ -58,6 +58,8 @@ cp "$EXEC_SRC" "$MACOS/$APP_NAME"
 cp "$HELPER_SRC" "$MACOS/$HELPER_NAME"
 cp "$REPO_ROOT/Sources/StayAwakeHelper/Resources/$HELPER_PLIST" "$CONTENTS/Library/LaunchDaemons/$HELPER_PLIST"
 cp "$REPO_ROOT/Sources/StayAwake/Resources/Info.plist" "$CONTENTS/Info.plist"
+# The About tab reads the logo through Bundle.main.
+cp "$REPO_ROOT/Sources/StayAwake/Resources/weteling-logo.svg" "$RES/weteling-logo.svg"
 if [[ -f "$BUILD_DIR/AppIcon.icns" ]]; then
     cp "$BUILD_DIR/AppIcon.icns" "$RES/AppIcon.icns"
     echo "✓ AppIcon.icns copied into bundle"

@@ -29,7 +29,7 @@ let package = Package(
             ],
             path: "Sources/StayAwake",
             // Info.plist is placed by build.sh, not by SwiftPM.
-            exclude: ["Resources/Info.plist"]
+            exclude: ["Resources/Info.plist", "Resources/weteling-logo.svg"]
         ),
         // Root launchd daemon. A stub until M5.
         .executableTarget(

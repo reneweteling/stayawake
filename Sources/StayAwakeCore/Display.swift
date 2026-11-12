@@ -35,16 +35,39 @@ public enum Readout {
         return "\(label) \(number(unit.convert(celsius))) \(unit.symbol) / \(number(unit.convert(limit)))"
     }
 
-    public static func cpu(_ snap: Snapshot, _ config: Config, unit: TemperatureUnit = .celsius) -> String {
-        temperature("CPU", snap.cpuTemperature, limit: config.cpuLimit, unit: unit)
+    /// The value a temperature rule compares with its limit: the 60 s
+    /// average from the engine when there is a decision, the instant
+    /// reading before the first one.
+    public static func ruleValue(_ instant: Double?, _ reading: SignalReading?) -> Double? {
+        guard let reading, reading.samples > 0 else { return instant }
+        return reading.smoothed
     }
 
-    public static func gpu(_ snap: Snapshot, _ config: Config, unit: TemperatureUnit = .celsius) -> String {
-        temperature("GPU", snap.gpuTemperature, limit: config.gpuLimit, unit: unit)
+    public static func cpuValue(_ snap: Snapshot, _ signals: Signals?) -> Double? { ruleValue(snap.cpuTemperature, signals?.cpu) }
+    public static func gpuValue(_ snap: Snapshot, _ signals: Signals?) -> Double? { ruleValue(snap.gpuTemperature, signals?.gpu) }
+    public static func batteryValue(_ snap: Snapshot, _ signals: Signals?) -> Double? {
+        ruleValue(snap.batteryTemperature, signals?.battery)
     }
 
-    public static func batteryTemperature(_ snap: Snapshot, _ config: Config, unit: TemperatureUnit = .celsius) -> String {
-        temperature("Battery", snap.batteryTemperature, limit: config.batteryTempLimit, unit: unit)
+    /// "CPU 96 °C / 102", the 60 s average against the limit.
+    public static func cpu(_ snap: Snapshot, _ config: Config, unit: TemperatureUnit = .celsius, signals: Signals? = nil) -> String {
+        temperature("CPU", cpuValue(snap, signals), limit: config.cpuLimit, unit: unit)
+    }
+
+    public static func gpu(_ snap: Snapshot, _ config: Config, unit: TemperatureUnit = .celsius, signals: Signals? = nil) -> String {
+        temperature("GPU", gpuValue(snap, signals), limit: config.gpuLimit, unit: unit)
+    }
+
+    public static func batteryTemperature(_ snap: Snapshot, _ config: Config, unit: TemperatureUnit = .celsius,
+                                          signals: Signals? = nil) -> String {
+        temperature("Battery", batteryValue(snap, signals), limit: config.batteryTempLimit, unit: unit)
+    }
+
+    /// "now 100" next to an averaged value, when the two differ by a degree or more.
+    public static func instantNote(_ reading: SignalReading?, unit: TemperatureUnit) -> String? {
+        guard let r = reading, r.samples > 1, let now = r.instant, let avg = r.smoothed,
+              abs(now - avg) >= 1 else { return nil }
+        return "now \(number(unit.convert(now)))"
     }
 
     /// "Battery 71% / stops at 20%"
@@ -80,8 +103,8 @@ public enum Readout {
 
     /// The smallest time left among the rules that have an estimate, with its name.
     public static func limitingTime(_ margins: [RuleMargin], timerLeft: TimeInterval?) -> (label: String, seconds: TimeInterval)? {
-        let names: [RuleID: String] = [.hardCap: "time cap", .schedule: "schedule end",
-                                       .lidOnBattery: "lid limit", .batteryFloor: "battery floor"]
+        let names: [RuleID: String] = [.hardCap: "time limit", .schedule: "end of schedule",
+                                       .lidOnBattery: "lid closed", .batteryFloor: "low battery"]
         var best: (String, TimeInterval)?
         for m in margins {
             guard let name = names[m.rule], let s = m.seconds else { continue }
@@ -183,7 +206,7 @@ public struct MenuBarStatus: Equatable, Sendable {
             }
             var parts = [held]
             if let p = i.snapshot.batteryPercent { parts.append("battery \(p)%") }
-            if let c = i.snapshot.cpuTemperature { parts.append("CPU \(Readout.number(i.unit.convert(c)))°") }
+            if let c = Readout.cpuValue(i.snapshot, i.decision?.signals) { parts.append("CPU \(Readout.number(i.unit.convert(c)))°") }
             return MenuBarStatus(kind: .holding, symbol: "cup.and.saucer.fill", title: readout,
                                  tooltip: parts.joined(separator: " · "))
         }
@@ -191,7 +214,7 @@ public struct MenuBarStatus: Equatable, Sendable {
 
     private static func readoutText(_ i: Input) -> String {
         var parts: [String] = []
-        if i.readout == .temperature || i.readout == .both, let c = i.snapshot.cpuTemperature {
+        if i.readout == .temperature || i.readout == .both, let c = Readout.cpuValue(i.snapshot, i.decision?.signals) {
             parts.append("\(Readout.number(i.unit.convert(c)))°")
         }
         if i.readout == .battery || i.readout == .both, let p = i.snapshot.batteryPercent {
@@ -203,14 +226,14 @@ public struct MenuBarStatus: Equatable, Sendable {
     /// Tooltip for the first rule in the warning band, e.g. "Battery at 24%, trips at 20%".
     private static func warningText(_ i: Input) -> String? {
         guard let d = i.decision, let first = d.nextToTrip.first(where: { d.warnings.contains($0.rule) }) else { return nil }
-        let s = i.snapshot, c = i.config
+        let s = i.snapshot, c = i.config, sig = d.signals
         func temp(_ name: String, _ v: Double?, _ limit: Double) -> String {
             "\(name) at \(v.map { Readout.number(i.unit.convert($0)) } ?? "n/a") \(i.unit.symbol), trips at \(Readout.number(i.unit.convert(limit))) \(i.unit.symbol)"
         }
         switch first.rule {
-        case .cpuTemperature: return temp("CPU", s.cpuTemperature, c.cpuLimit)
-        case .gpuTemperature: return temp("GPU", s.gpuTemperature, c.gpuLimit)
-        case .batteryTemperature: return temp("Battery", s.batteryTemperature, c.batteryTempLimit)
+        case .cpuTemperature: return temp("CPU", Readout.cpuValue(s, sig), c.cpuLimit)
+        case .gpuTemperature: return temp("GPU", Readout.gpuValue(s, sig), c.gpuLimit)
+        case .batteryTemperature: return temp("Battery", Readout.batteryValue(s, sig), c.batteryTempLimit)
         case .batteryFloor: return "Battery at \(s.batteryPercent.map(String.init) ?? "n/a")%, trips at \(c.floorPercent)%"
         default: return first.seconds.map { "\(first.detail): trips in \(Readout.duration($0))" } ?? first.detail
         }

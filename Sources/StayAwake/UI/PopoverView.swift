@@ -2,7 +2,7 @@ import SwiftUI
 import StayAwakeCore
 
 /// Section 3 of the spec: the switch, the readouts with their limits, what
-/// trips next, the last event and the footer.
+/// stops it first, the last event and the footer.
 struct PopoverView: View {
     @ObservedObject var model: AppModel
     @ObservedObject var settings: AppSettings
@@ -66,13 +66,13 @@ struct PopoverView: View {
             return model.status.tooltip
         case .holding:
             var parts: [String] = []
-            if let held = model.heldFor { parts.append("Holding for \(Readout.duration(held))") } else { parts.append("Holding") }
+            if let held = model.heldFor { parts.append("Awake for \(Readout.duration(held))") } else { parts.append("Keeping the Mac awake") }
             if let d = model.decision, let limit = Readout.limitingTime(d.margins, timerLeft: model.timerLeft) {
                 parts.append("\(Readout.duration(limit.seconds)) left (\(limit.label))")
             }
             return parts.joined(separator: " · ")
         case .tripped:
-            return "Stopped by a rule."
+            return "Stopped. The Mac sleeps as usual again."
         }
     }
 
@@ -90,12 +90,12 @@ struct PopoverView: View {
 
     private var trippedBlock: some View {
         VStack(alignment: .leading, spacing: 6) {
-            Text("Sleep restored").font(.headline)
+            Text("Stopped, normal sleep is back").font(.headline)
             if let trip = model.engine.lastTrip {
                 let at = model.trippedAt.map { Readout.clock($0, in: .current) } ?? ""
                 Text("\(at) · \(trip.message)").font(.callout).fixedSize(horizontal: false, vertical: true)
             }
-            Button("Re-arm") { model.arm() }
+            Button("Turn On Again") { model.arm() }
         }
     }
 
@@ -117,19 +117,21 @@ struct PopoverView: View {
         .font(.callout)
     }
 
+    /// CPU and GPU rows show the 60 s average the rules compare with the limit.
     private var readouts: some View {
         let s = model.snapshot
+        let sig = model.decision?.signals
         return VStack(alignment: .leading, spacing: 5) {
-            row("CPU", Readout.value(Readout.cpu(s, cfg, unit: unit), label: "CPU"), color: tone(.cpuTemperature))
-            row("GPU", Readout.value(Readout.gpu(s, cfg, unit: unit), label: "GPU"), color: tone(.gpuTemperature))
-            row("Battery", Readout.value(Readout.batteryTemperature(s, cfg, unit: unit), label: "Battery"), color: tone(.batteryTemperature))
-            row("Battery", Readout.value(Readout.batteryLevel(s, cfg), label: "Battery"), color: tone(.batteryFloor))
+            row("CPU temperature", Readout.value(Readout.cpu(s, cfg, unit: unit, signals: sig), label: "CPU"), color: tone(.cpuTemperature))
+            row("GPU temperature", Readout.value(Readout.gpu(s, cfg, unit: unit, signals: sig), label: "GPU"), color: tone(.gpuTemperature))
+            row("Battery temperature", Readout.value(Readout.batteryTemperature(s, cfg, unit: unit, signals: sig), label: "Battery"), color: tone(.batteryTemperature))
+            row("Battery charge", Readout.value(Readout.batteryLevel(s, cfg), label: "Battery"), color: tone(.batteryFloor))
             ProgressView(value: Double(s.batteryPercent ?? 0), total: 100)
                 .tint(tone(.batteryFloor) == .primary ? .accentColor : tone(.batteryFloor))
             Text(batteryState).font(.caption).foregroundStyle(.secondary)
             row("Lid", lidText)
             row("Network", s.networkUsable ? "Online" : "Offline", color: s.networkUsable ? .primary : .orange)
-            row("System sleep", systemSleepText, color: systemSleepColor)
+            row("Mac sleep", systemSleepText, color: systemSleepColor)
         }
     }
 
@@ -152,8 +154,8 @@ struct PopoverView: View {
 
     private var systemSleepText: String {
         switch model.sleepDisabled {
-        case true: return "Disabled"
-        case false: return "Allowed"
+        case true: return "Blocked"
+        case false: return "Normal"
         default: return "Unknown"
         }
     }
@@ -163,29 +165,29 @@ struct PopoverView: View {
         model.sleepDisabled == true && model.engine.phase != .holding ? .orange : .primary
     }
 
-    // MARK: Next to trip
+    // MARK: First to stop it
 
     private var nextToTrip: some View {
         let list = (model.decision?.nextToTrip ?? []).filter(Readout.isMeaningful)
         return VStack(alignment: .leading, spacing: 4) {
             if let first = list.first {
-                row("Next to trip", Readout.marginLine(first), color: first.fraction <= Forecast.warningFraction ? .orange : .primary)
+                row("First to stop it", Readout.marginLine(first), color: first.fraction <= Forecast.warningFraction ? .orange : .primary)
                 if list.count > 1 {
                     row("Then", list.dropFirst().map { Readout.marginLine($0) }.joined(separator: " · "))
                 }
             } else {
-                row("Next to trip", "Nothing close")
+                row("First to stop it", "Nothing close")
             }
         }
     }
 
-    // MARK: Arm for and footer
+    // MARK: Keep awake picker and footer
 
     private var armFor: some View {
         HStack {
-            Text("Arm for").font(.callout)
+            Text("Keep awake").font(.callout)
             Spacer()
-            Picker("Arm for", selection: $model.armDuration) {
+            Picker("Keep awake", selection: $model.armDuration) {
                 ForEach(ArmDuration.allCases, id: \.self) { Text($0.title).tag($0) }
             }
             .labelsHidden()
@@ -198,23 +200,26 @@ struct PopoverView: View {
         HStack(spacing: 12) {
             Button("Settings…", action: openSettings)
             Button("Open log") { EventLog.open() }
-            Button("Restore sleep now") { model.restoreSleepNow() }
+            Button("Allow sleep") { model.restoreSleepNow() }
+                .help("Turn normal Mac sleep back on right now")
             Spacer()
             Button("Quit", action: quit).keyboardShortcut("q")
         }
         .buttonStyle(.link)
         .font(.callout)
+        .lineLimit(1)
+        .fixedSize(horizontal: false, vertical: true)
     }
 }
 
 extension ArmDuration {
     var title: String {
         switch self {
-        case .untilTrip: return "Until a rule trips"
+        case .untilTrip: return "Until a limit stops it"
         case .oneHour: return "1 hour"
         case .twoHours: return "2 hours"
         case .fourHours: return "4 hours"
-        case .untilScheduleEnd: return "Until schedule end"
+        case .untilScheduleEnd: return "Until the schedule ends"
         }
     }
 }
