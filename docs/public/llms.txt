@@ -15,7 +15,7 @@
 
 ## Safety rules
 
-- Defaults: battery temperature 43 °C for 60 s, CPU 100 °C as a 60 s average for 2 min, GPU 95 °C, macOS thermal pressure serious for 5 min, battery below 20%, no network for 15 min, lid closed on battery for 90 min, idle CPU under 10% for 15 min, an 8 hour cap, and allowed hours per weekday. Every limit is a setting
+- Defaults: battery temperature 43 °C for 60 s, CPU 100 °C as a 60 s average for 2 min, GPU 95 °C, macOS thermal pressure serious for 5 min, battery below 40%, no network for 15 min, lid closed on battery for 90 min, idle CPU under 10% for 15 min, an 8 hour cap, and allowed hours per weekday. Every limit is a setting
 - Unreadable sensors count as a trip
 - The helper holds a lease the app keeps renewing. A crash, hang or force quit restores sleep within 60 seconds, a reboot restores it at boot, and a 12 hour ceiling applies no matter what
 - The helper can run exactly two commands, pmset -a disablesleep 1 and 0, and only accepts the signed StayAwake app
