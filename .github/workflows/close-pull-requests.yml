@@ -1,0 +1,34 @@
+name: Close pull requests
+
+# StayAwake does not accept pull requests (see CONTRIBUTING.md). GitHub cannot
+# disable them on a public repository, so close each one with an explanation.
+on:
+  pull_request_target:
+    types: [opened, reopened]
+
+permissions:
+  pull-requests: write
+
+jobs:
+  close:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Comment and close
+        uses: actions/github-script@v8
+        with:
+          script: |
+            const { owner, repo } = context.repo;
+            const issue_number = context.payload.pull_request.number;
+            await github.rest.issues.createComment({
+              owner, repo, issue_number,
+              body: [
+                'Thanks for taking the time. StayAwake does not accept pull requests: the code is',
+                'source-available under the PolyForm Noncommercial License and I keep the',
+                'copyright on every line.',
+                '',
+                'If this fixes a bug or adds something useful, please open an issue with the',
+                'details (or link this PR from one) and I will pick it up from there. See',
+                'https://github.com/reneweteling/stayawake/blob/main/CONTRIBUTING.md',
+              ].join('\n'),
+            });
+            await github.rest.pulls.update({ owner, repo, pull_number: issue_number, state: 'closed' });

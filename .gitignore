@@ -1,0 +1,35 @@
+# SwiftPM
+.build/
+.swiftpm/
+Package.resolved
+*.xcodeproj/
+*.xcworkspace/
+
+# Build artifacts
+build/
+DerivedData/
+
+# macOS
+.DS_Store
+
+# Editor
+.idea/
+.vscode/
+*.swp
+.claude/settings.local.json
+
+# Temp
+*.zip.tmp
+/tmp/
+
+# Node
+node_modules/
+.husky/_/
+docs/node_modules/
+docs/dist/
+docs/.astro/
+
+secrets/
+
+.playwright-cli/
+.envrc

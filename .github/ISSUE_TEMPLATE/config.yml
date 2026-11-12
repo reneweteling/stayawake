@@ -1,0 +1,5 @@
+blank_issues_enabled: true
+contact_links:
+  - name: Pull requests
+    url: https://github.com/reneweteling/stayawake/blob/main/CONTRIBUTING.md
+    about: StayAwake does not take pull requests. Issues and ideas are welcome.

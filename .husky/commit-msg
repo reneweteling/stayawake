@@ -1,0 +1,4 @@
+# Skip commit-message linting in CI. semantic-release makes its own release
+# commit there, and its notes routinely exceed commitlint's body line length.
+[ -n "$CI" ] && exit 0
+pnpm exec commitlint --edit "$1"

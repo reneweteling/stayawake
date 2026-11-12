@@ -1,0 +1,22 @@
+name: Feature idea
+description: Something StayAwake should do
+labels: [enhancement]
+body:
+  - type: textarea
+    id: situation
+    attributes:
+      label: What are you trying to do?
+      description: The situation you are in. The solution can come after.
+    validations:
+      required: true
+  - type: textarea
+    id: idea
+    attributes:
+      label: How would you like StayAwake to handle it?
+  - type: dropdown
+    id: channel
+    attributes:
+      label: Which StayAwake do you run?
+      options:
+        - GitHub release
+        - Built from source
