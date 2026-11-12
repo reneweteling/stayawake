@@ -1,0 +1,49 @@
+---
+type Rule = [string, string];
+const groups: [string, Rule[]][] = [
+  ['Heat', [
+    ['Battery temperature', 'Hottest battery sensor at 43 °C for 60 s. This is the one that matters in a bag.'],
+    ['CPU', '60 s average at 102 °C for 2 min. Clears 10 °C lower.'],
+    ['GPU', '60 s average at 100 °C for 2 min.'],
+    ['Thermal pressure', 'macOS reports serious for 5 min, or critical once.'],
+    ['Battery heating up', 'Up 2 °C in 5 min with the lid closed on battery. Off by default.'],
+  ]],
+  ['Power and network', [
+    ['Battery charge', 'Below 20% and not charging. Clears at 30% or on the charger.'],
+    ['No network', 'No usable route for 15 min.'],
+    ['Sensor failure', 'No valid temperature for 60 s. Unknown heat counts as hot.'],
+  ]],
+  ['Time', [
+    ['Time cap', '8 h in one run.'],
+    ['Lid on battery', 'Closed and unplugged for 90 min.'],
+    ['Schedule', 'Outside your hours for that weekday. Up to three windows a day.'],
+    ['Idle', 'CPU under 10% for 15 min with the lid closed.'],
+    ['Watched process', 'No claude process for 20 min. Off by default.'],
+  ]],
+];
+---
+<section class="block" id="rules">
+  <div class="wrap">
+    <h2>When it lets go</h2>
+    <p class="lede">The first rule that trips turns sleep back on. Every limit is a setting, these are the defaults. Temperatures have to stay over the limit for a while, so one spike does not end a run.</p>
+    <div class="groups">
+      {groups.map(([name, rules]) => (
+        <div class="group">
+          <h3>{name}</h3>
+          <dl>
+            {rules.map(([t, d]) => <div><dt>{t}</dt><dd>{d}</dd></div>)}
+          </dl>
+        </div>
+      ))}
+    </div>
+  </div>
+</section>
+<style>
+  .groups { display: grid; grid-template-columns: 1.15fr 1fr 1fr; gap: 48px; margin-top: 56px; }
+  .group { border-top: 1px solid #2c3c40; padding-top: 18px; }
+  .group h3 { font: 600 13px/1 var(--mono); color: var(--muted); margin-bottom: 22px; }
+  dl { margin: 0; display: grid; gap: 18px; }
+  dt { font-weight: 600; }
+  dd { margin: 2px 0 0; color: var(--muted); font-size: 15px; line-height: 1.5; }
+  @media (max-width: 880px) { .groups { grid-template-columns: 1fr; gap: 40px; } }
+</style>

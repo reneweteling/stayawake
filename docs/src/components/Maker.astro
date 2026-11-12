@@ -1,85 +1,44 @@
 ---
 const base = import.meta.env.BASE_URL.replace(/\/?$/, '/');
-const asset = (p: string) => `${base}${p.replace(/^\//, '')}`;
 const site = 'https://www.weteling.com';
+const apps: [string, string, string][] = [
+  ['TidyDrive', 'https://reneweteling.github.io/tidydrive/', 'Your disk is full. Take it back.'],
+  ['Loft', 'https://reneweteling.github.io/loft-app/', 'Drag a file to your menu bar, get a link back.'],
+  ['fckr', 'https://reneweteling.github.io/fckr/', 'Make your colleagues’ Macs talk. From your terminal.'],
+  ['HeadsUp', 'https://headsup-app.com', 'Your group chats, turned into one morning to-do list.'],
+  ['FooterManager', 'https://footermanager.com', 'Email signatures that manage themselves.'],
+];
 ---
-<section class="maker" id="maker" aria-labelledby="maker-title">
+<section class="block" id="maker" aria-labelledby="maker-title">
   <div class="wrap grid">
-    <figure class="photo" data-reveal>
-      <img src={asset('assets/rene.jpg')} alt="René Weteling" width="720" height="720" loading="lazy" />
-      <figcaption class="mono">René Weteling<br /><span>Agentic Developer</span></figcaption>
-    </figure>
-    <div class="copy" data-reveal style="--d:150ms">
-      <span class="kicker">Who made this</span>
-      <h2 id="maker-title">One developer.<br />A fleet of agents.</h2>
-      <p class="lead">
-        I'm René Weteling. I orchestrate AI agents that design, code, test and ship, and I bring the engineering
-        judgement that keeps them honest. StayAwake is one of the small tools that come out of that.
-      </p>
-      <p class="lead">Want that speed on your own product? Idea to production, CTO as a service, or a second pair of senior eyes.</p>
+    <img src={`${base}assets/rene.jpg`} alt="René Weteling" width="720" height="720" loading="lazy" />
+    <div>
+      <h2 id="maker-title">Made by René Weteling</h2>
+      <p class="lede">I build products with a fleet of AI agents and bring the engineering judgement that keeps them honest. I wrote StayAwake because I wanted those agents to keep going while I was on the train.</p>
+      <p class="lede">Want that speed on your own product? Idea to production, CTO as a service, or a second pair of senior eyes.</p>
       <div class="cta">
         <a class="btn primary" href={`${site}/#contact`} target="_blank" rel="noopener">Start a project</a>
         <a class="btn ghost" href={site} target="_blank" rel="noopener">weteling.com</a>
       </div>
-      <div class="apps">
-        <span class="mono label">More apps by René</span>
-        <a class="app" href="https://reneweteling.github.io/tidydrive/" target="_blank" rel="noopener">
-          <b>TidyDrive</b>
-          <span>Your disk is full. Take it back.</span>
-        </a>
-        <a class="app" href="https://reneweteling.github.io/loft-app/" target="_blank" rel="noopener">
-          <b>Loft</b>
-          <span>Drag a file to your menu bar, get a link back.</span>
-        </a>
-        <a class="app" href="https://reneweteling.github.io/fckr/" target="_blank" rel="noopener">
-          <b>fckr</b>
-          <span>Make your colleagues' Macs talk. From your terminal.</span>
-        </a>
-        <a class="app" href="https://headsup-app.com" target="_blank" rel="noopener">
-          <b>HeadsUp</b>
-          <span>Your group chats, turned into one morning to-do list.</span>
-        </a>
-        <a class="app" href="https://footermanager.com" target="_blank" rel="noopener">
-          <b>FooterManager</b>
-          <span>Email signatures that manage themselves.</span>
-        </a>
-        <a class="app all" href={`${site}/#apps`} target="_blank" rel="noopener">
-          <b>All apps</b>
-          <span>The rest of the shelf on weteling.com.</span>
-        </a>
-      </div>
+      <h3>Other apps</h3>
+      <ul>
+        {apps.map(([n, u, d]) => <li><a href={u} target="_blank" rel="noopener">{n}</a><span>{d}</span></li>)}
+        <li><a href={`${site}/#apps`} target="_blank" rel="noopener">All apps</a><span>The rest are on weteling.com.</span></li>
+      </ul>
     </div>
   </div>
 </section>
-
 <style>
-  .maker { background: var(--hero-bg); color: var(--hero-ink); padding: 120px 0; border-top: 1px solid var(--hero-line); }
-  .grid { display: grid; grid-template-columns: minmax(260px, 420px) 1fr; gap: 72px; align-items: center; }
-  .photo { margin: 0; position: relative; }
-  .photo img { width: 100%; height: auto; aspect-ratio: 1; object-fit: cover; border-radius: 20px; display: block;
-    filter: grayscale(.15) contrast(1.05); box-shadow: 0 40px 80px -40px rgba(0,0,0,.8); }
-  .photo::before { content: ""; position: absolute; inset: -14px 14px 14px -14px; border: 2px solid var(--hero-accent); border-radius: 22px; z-index: -1; }
-  .photo { isolation: isolate; }
-  figcaption { position: absolute; left: 18px; bottom: 18px; background: rgba(6,10,11,.78); backdrop-filter: blur(8px);
-    padding: 10px 14px; border-radius: 10px; font-size: 13px; line-height: 1.35; color: var(--hero-ink); }
-  figcaption span { color: var(--hero-accent); }
-  h2 { font-size: clamp(2.6rem, 6vw, 4.6rem); text-transform: uppercase; margin: 6px 0 24px; }
-  .lead { color: var(--hero-muted); font-size: 1.15rem; max-width: 54ch; margin-bottom: 14px; }
+  .grid { display: grid; grid-template-columns: minmax(0, 4fr) minmax(0, 8fr); gap: 48px; align-items: start; }
+  img { width: 100%; max-width: 300px; height: auto; aspect-ratio: 1; object-fit: cover; border-radius: 12px; display: block; filter: grayscale(.2); }
+  .lede { margin-top: 16px; }
   .cta { display: flex; flex-wrap: wrap; gap: 12px; margin-top: 28px; }
-  .btn.primary { background: var(--hero-accent); color: #0d1517; }
-  .btn.ghost { background: transparent; color: var(--hero-ink); border: 1px solid var(--hero-line); }
-  .btn.ghost:hover { border-color: var(--hero-ink); }
-  .apps { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-top: 44px; max-width: 560px; }
-  .label { grid-column: 1 / -1; color: var(--hero-muted); font-size: 11px; letter-spacing: .12em; text-transform: uppercase; }
-  .app { display: grid; gap: 4px; padding: 16px 18px; border: 1px solid var(--hero-line); border-radius: 12px; text-decoration: none; color: inherit; transition: border-color .2s, transform .2s; }
-  .app:hover, .app:focus-visible { border-color: var(--hero-accent); transform: translateY(-2px); }
-  .app b { font: 800 1.3rem/1 var(--display); text-transform: uppercase; }
-  .app span { color: var(--hero-muted); font-size: 14px; }
-  .app.all { grid-column: 1 / -1; border-style: dashed; }
-  @media (max-width: 860px) {
-    .grid { grid-template-columns: 1fr; gap: 48px; }
-    .photo { max-width: 360px; }
-    .apps { grid-template-columns: 1fr; }
-  }
-  @media (prefers-reduced-motion: reduce) { .app { transition: none; } .app:hover { transform: none; } }
+  h3 { margin-top: 56px; font-size: 15px; color: var(--muted); font-weight: 600; }
+  ul { list-style: none; margin: 14px 0 0; padding: 0; display: grid; gap: 10px; }
+  li { display: grid; grid-template-columns: 140px 1fr; gap: 16px; font-size: 15px; }
+  li a { font-weight: 600; text-decoration: none; }
+  li a:hover { color: var(--accent); }
+  li span { color: var(--muted); }
+  @media (max-width: 880px) { .grid { grid-template-columns: 1fr; gap: 32px; } img { max-width: 180px; } }
+  @media (max-width: 480px) { li { grid-template-columns: 1fr; gap: 0; } }
 </style>

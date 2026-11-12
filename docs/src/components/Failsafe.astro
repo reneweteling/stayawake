@@ -1,0 +1,40 @@
+---
+const points: [string, string][] = [
+  ['Lease', 'A small root helper only keeps sleep off while the app keeps renewing a lease. Crash, hang or force quit, and sleep is back within 60 s.'],
+  ['Reboot', 'The helper turns sleep back on at every boot. A lease from an earlier boot is void.'],
+  ['Ceiling', '12 hours, whatever the app says.'],
+  ['Two commands', 'The helper runs pmset -a disablesleep 1 or 0 and nothing else. No shell, and only the signed StayAwake app can talk to it.'],
+];
+---
+<section class="block" id="decides">
+  <div class="wrap grid">
+    <div>
+      <h2>If the app dies, the Mac still sleeps</h2>
+      <p class="lede">The bad outcome for a tool like this is a Mac stuck awake in a bag after the app crashed. So the switch is not in the app.</p>
+      <dl>
+        {points.map(([t, d]) => <div><dt>{t}</dt><dd>{d}</dd></div>)}
+      </dl>
+    </div>
+    <div class="last">
+      <p>If everything else fails, this turns normal sleep back on:</p>
+      <pre class="term"><code><span class="p">$ </span>sudo pmset -a disablesleep 0</code></pre>
+      <p class="note">Also shown in About and by <code>StayAwake --restore</code>.</p>
+    </div>
+  </div>
+</section>
+<style>
+  .grid { display: grid; grid-template-columns: minmax(0, 7fr) minmax(0, 5fr); gap: 72px; align-items: end; }
+  dl { margin: 40px 0 0; display: grid; grid-template-columns: 140px 1fr; gap: 16px 24px; }
+  dl div { display: contents; }
+  dt { font-weight: 600; }
+  dd { margin: 0; color: var(--muted); max-width: 52ch; }
+  .last { display: grid; gap: 14px; }
+  .last p { color: var(--muted); font-size: 15px; }
+  .last pre code { background: none; border: 0; padding: 0; font-size: 15px; }
+  .note code { font-size: 13px; }
+  @media (max-width: 880px) {
+    .grid { grid-template-columns: 1fr; gap: 40px; }
+    dl { grid-template-columns: 1fr; gap: 4px; }
+    dd { margin-bottom: 14px; }
+  }
+</style>

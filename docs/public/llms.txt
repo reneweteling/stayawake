@@ -1,6 +1,6 @@
 # StayAwake
 
-> StayAwake is a free macOS menu bar app (macOS 14+, Apple Silicon) that keeps a closed MacBook awake on battery so AI coding agents (Claude Code, Codex and similar) keep working while the laptop is in your bag and you steer from your phone, and switches itself off before heat, a low battery or the clock make that a bad idea. Made by René Weteling (https://www.weteling.com).
+> StayAwake is a free macOS menu bar app (macOS 14+, Apple Silicon) that keeps a closed MacBook awake on battery so AI coding agents (Claude Code, Codex and similar) keep working while the laptop is in your bag and you steer from your phone, and lets it sleep again when it gets too warm, the battery runs low, the network drops or the time is up. Made by René Weteling (https://www.weteling.com).
 
 ## AI on the go
 
@@ -15,9 +15,9 @@
 
 ## Safety rules
 
-- Release on CPU, GPU or battery temperature, macOS thermal pressure, a battery floor, allowed hours per weekday, lid closed on battery for too long, idle, no network and a hard time cap
+- Defaults: battery temperature 43 °C for 60 s, CPU 102 °C as a 60 s average for 2 min, GPU 100 °C, macOS thermal pressure serious for 5 min, battery below 20%, no network for 15 min, lid closed on battery for 90 min, idle CPU under 10% for 15 min, an 8 hour cap, and allowed hours per weekday. Every limit is a setting
 - Unreadable sensors count as a trip
-- The helper holds a lease the app renews every 10 seconds. A crash, hang or force quit restores sleep within 60 seconds, a reboot restores it at boot, and a 12 hour ceiling applies no matter what
+- The helper holds a lease the app keeps renewing. A crash, hang or force quit restores sleep within 60 seconds, a reboot restores it at boot, and a 12 hour ceiling applies no matter what
 - The helper can run exactly two commands, pmset -a disablesleep 1 and 0, and only accepts the signed StayAwake app
 
 ## Facts

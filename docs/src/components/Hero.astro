@@ -1,90 +1,56 @@
 ---
+import Popover from './Popover.astro';
 const base = import.meta.env.BASE_URL.replace(/\/?$/, '/');
-const asset = (p: string) => `${base}${p.replace(/^\//, '')}`;
 const downloadUrl = 'https://github.com/reneweteling/stayawake/releases/latest/download/StayAwake.dmg';
 const githubUrl = 'https://github.com/reneweteling/stayawake';
 ---
 
 <header class="hero">
-  <picture class="bg" aria-hidden="true">
-    <span class="glow lid"></span><span class="glow ringg"></span>
-    <img src={asset('assets/hero-1600.webp')} srcset={`${asset('assets/hero-1600.webp')} 1600w, ${asset('assets/hero-2400.webp')} 2400w`} sizes="100vw" width="2400" height="1350" alt="" fetchpriority="high" />
-  </picture>
   <div class="wrap">
-    <div class="topline in-0">
-      <span class="brand"><img src={asset('assets/icon.png')} alt="" width="36" height="36" />StayAwake</span>
-      <span class="mono meta">macOS 14+ / Apple Silicon / by <a href="https://www.weteling.com" target="_blank" rel="noopener">René Weteling</a></span>
+    <div class="topline">
+      <span class="brand"><img src={`${base}assets/icon.png`} alt="" width="30" height="30" />StayAwake</span>
+      <span class="meta">macOS 14+ / Apple Silicon / by <a href="https://www.weteling.com" target="_blank" rel="noopener">René Weteling</a></span>
     </div>
 
     <div class="grid">
       <div class="copy">
-        <span class="kicker in-1">AI on the go, for your closed MacBook</span>
-        <h1 class="in-2">Agents keep working. <em>Laptop in your bag.</em></h1>
-        <p class="pitch in-3">
-          StayAwake keeps a closed MacBook awake on battery, so Claude Code, Codex and other agents run while you commute, steering from your phone. It stops before heat, a low battery or the clock make that a bad idea.
-        </p>
-        <div class="cta in-4">
+        <h1><span>Agents keep working.</span> <em>Laptop in your bag.</em></h1>
+        <p class="pitch">Keeps a closed MacBook awake on battery for Claude Code and Codex, and lets it sleep before it runs hot.</p>
+        <div class="cta">
           <a class="btn primary" href={downloadUrl}>
-            <svg width="18" height="18" viewBox="0 0 16 16" fill="none" aria-hidden="true"><path d="M8 2v8m0 0L5 7m3 3 3-3M2 13h12" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" /></svg>
+            <svg width="17" height="17" viewBox="0 0 16 16" fill="none" aria-hidden="true"><path d="M8 2v8m0 0L5 7m3 3 3-3M2 13h12" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" /></svg>
             Download for macOS
           </a>
           <a class="btn ghost" href={githubUrl} target="_blank" rel="noopener">Source on GitHub</a>
         </div>
-        <p class="mono fine in-5">Signed and notarized. Free for noncommercial use.</p>
       </div>
-
+      <div class="shot"><Popover /></div>
     </div>
   </div>
 </header>
 
 <style>
-  .hero { background: var(--hero-bg); color: var(--hero-ink); padding: 28px 0 0; position: relative; overflow: hidden; min-height: min(820px, 100svh); display: flex; }
-  .bg { position: absolute; inset: 0; }
-  .bg img { width: 100%; height: 100%; object-fit: cover; object-position: 70% 50%; }
-  .hero::before { content: ""; position: absolute; inset: 0; z-index: 1; background: linear-gradient(90deg, var(--hero-bg) 0%, rgba(10,16,17,.88) 28%, rgba(10,16,17,.35) 58%, rgba(10,16,17,0) 78%), linear-gradient(0deg, var(--bg) 0%, rgba(10,16,17,0) 22%); }
-  .hero .wrap { position: relative; z-index: 2; width: 100%; display: flex; flex-direction: column; }
-  .bg { will-change: transform; }
-  .bg img { position: relative; }
-  .glow { position: absolute; z-index: 1; border-radius: 50%; pointer-events: none; mix-blend-mode: screen; }
-  .glow.lid { left: 44%; top: 50%; width: 38%; height: 30%; background: radial-gradient(closest-side, rgba(255,160,50,.55), rgba(255,140,40,.18) 55%, transparent); opacity: .5; }
-  .glow.ringg { left: 61%; top: 11%; width: 20%; height: 40%; background: radial-gradient(closest-side, rgba(255,150,60,.35), transparent); opacity: .4; }
-  @media (prefers-reduced-motion: no-preference) {
-    .glow.lid { animation: breathe 6s ease-in-out infinite; }
-    .glow.ringg { animation: breathe 6s ease-in-out -2.4s infinite; }
-    .bg img { animation: settle 2.4s cubic-bezier(.2,.7,.2,1) both; }
-    .in-0, .in-1, .in-2, .in-3, .in-4, .in-5 { animation: rise .9s cubic-bezier(.2,.7,.2,1) both; }
-    .in-0 { animation-delay: .05s; } .in-1 { animation-delay: .15s; } .in-2 { animation-delay: .27s; }
-    .in-3 { animation-delay: .45s; } .in-4 { animation-delay: .58s; } .in-5 { animation-delay: .72s; }
-  }
-  @keyframes breathe { 0%, 100% { opacity: .25; transform: scale(.92); } 50% { opacity: .85; transform: scale(1.08); } }
-  @keyframes rise { from { opacity: 0; transform: translateY(22px); } to { opacity: 1; transform: none; } }
-  @keyframes settle { from { transform: scale(1.07); } to { opacity: 1; transform: none; } }
-  .meta a { color: var(--hero-accent); text-decoration: none; }
-  .meta a:hover { text-decoration: underline; }
-  .topline { display: flex; justify-content: space-between; align-items: center; gap: 16px; padding-bottom: 56px; }
-  .brand { display: flex; align-items: center; gap: 12px; font: 800 24px/1 var(--display); letter-spacing: -0.01em; text-transform: uppercase; }
-  .brand img { border-radius: 9px; }
-  .meta { color: var(--hero-muted); font-size: 12px; text-shadow: 0 1px 8px #000; }
-  .grid { flex: 1; display: flex; align-items: center; padding-bottom: 120px; }
-  .copy { max-width: 660px; }
-  .kicker { color: var(--hero-accent); }
-  h1 { font-size: clamp(2.8rem, 7vw, 5.6rem); text-transform: uppercase; line-height: .9; }
-  h1 em { font-style: normal; color: var(--hero-accent); }
-  .pitch { color: #b6c3c7; font-size: 1.25rem; max-width: 44ch; margin-top: 28px; }
+  .hero { padding: 28px 0 112px; }
+  .topline { display: flex; justify-content: space-between; align-items: center; gap: 16px; }
+  .brand { display: flex; align-items: center; gap: 10px; font: 800 21px/1 var(--display); text-transform: uppercase; letter-spacing: 0; }
+  .brand img { border-radius: 7px; }
+  .meta { font: 12px/1 var(--mono); color: var(--dim); }
+  .meta a { color: var(--muted); text-decoration: none; }
+  .meta a:hover { color: var(--ink); }
+  .grid { display: grid; grid-template-columns: minmax(0, 1.45fr) minmax(0, 1fr); gap: 56px; align-items: center; margin-top: 72px; }
+  h1 { font-size: clamp(2.5rem, 4vw, 3.4rem); line-height: .98; }
+  h1 span, h1 em { display: block; }
+  h1 em { font-style: normal; color: var(--accent); }
+  .pitch { color: var(--muted); font-size: 1.2rem; max-width: 36ch; margin-top: 24px; }
   .cta { display: flex; flex-wrap: wrap; gap: 12px; margin-top: 32px; }
-  .btn.ghost { background: rgba(10,16,17,.5); backdrop-filter: blur(6px); }
-  .fine { margin-top: 18px; color: var(--hero-muted); font-size: 12px; }
+  .shot { display: flex; justify-content: flex-end; align-self: start; }
 
-  @media (max-width: 860px) {
-    .hero { min-height: 0; }
-    .bg { inset: 0 0 auto 0; height: 440px; -webkit-mask-image: linear-gradient(#000 55%, transparent); mask-image: linear-gradient(#000 55%, transparent); }
-    .bg img { object-position: 74% 50%; }
-    .glow.lid { left: 20%; top: 52%; width: 70%; height: 30%; }
-    .glow.ringg { left: 48%; top: 6%; width: 40%; height: 50%; }
-    .hero::before { background: linear-gradient(180deg, rgba(10,16,17,.55) 0, rgba(10,16,17,0) 90px); }
+  @media (max-width: 880px) {
+    .hero { padding-bottom: 80px; }
+    .grid { grid-template-columns: 1fr; gap: 48px; margin-top: 56px; }
+    .shot { justify-content: flex-start; }
     .meta { display: none; }
-    .topline { padding-bottom: 0; }
-    .grid { padding: 280px 0 48px; }
     .pitch { font-size: 1.1rem; }
+    h1 span, h1 em { display: inline; }
   }
 </style>

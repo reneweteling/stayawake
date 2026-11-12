@@ -1,28 +1,20 @@
 ---
 const year = new Date().getFullYear();
-const dl = 'https://github.com/reneweteling/stayawake/releases/latest/download/StayAwake.dmg';
 ---
 <footer>
-  <div class="wrap">
-    <div class="big" data-reveal>Stay<br />awake.</div>
-    <a class="btn primary" href={dl}>Download StayAwake</a>
-    <div class="bar">
-      <span>StayAwake is made by <a class="me" href="https://www.weteling.com" target="_blank" rel="noopener">René Weteling</a>. Felobo B.V. &copy; {year}</span>
-      <nav aria-label="Footer links">
-        <a href="https://github.com/reneweteling/stayawake" target="_blank" rel="noopener">Source</a>
-        <a href="https://polyformproject.org/licenses/noncommercial/1.0.0" target="_blank" rel="noopener">PolyForm Noncommercial 1.0.0</a>
-        <a href="https://www.weteling.com" target="_blank" rel="noopener">weteling.com</a>
-      </nav>
-    </div>
+  <div class="wrap bar">
+    <span>StayAwake by <a href="https://www.weteling.com" target="_blank" rel="noopener">René Weteling</a>. Felobo B.V. &copy; {year}</span>
+    <nav aria-label="Footer links">
+      <a href="https://github.com/reneweteling/stayawake" target="_blank" rel="noopener">Source</a>
+      <a href="https://github.com/reneweteling/stayawake/issues" target="_blank" rel="noopener">Issues</a>
+      <a href="https://polyformproject.org/licenses/noncommercial/1.0.0" target="_blank" rel="noopener">PolyForm Noncommercial 1.0.0</a>
+    </nav>
   </div>
 </footer>
 <style>
-  footer { background: var(--hero-bg); color: var(--hero-ink); padding: 96px 0 32px; }
-  .big { font: 800 clamp(4rem, 14vw, 10rem)/.88 var(--display); text-transform: uppercase; letter-spacing: -0.03em; margin-bottom: 36px; }
-  .btn { background: var(--hero-accent); color: #0d1517; }
-  .bar { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 16px; margin-top: 80px; padding-top: 24px; border-top: 1px solid var(--hero-line); color: var(--hero-muted); font-size: 14px; }
+  footer { border-top: 1px solid var(--line); padding: 32px 0 40px; color: var(--dim); font-size: 14px; }
+  .bar { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 16px; }
   nav { display: flex; flex-wrap: wrap; gap: 8px 24px; }
-  nav a { text-decoration: none; }
-  .me { color: var(--hero-ink); }
-  nav a:hover { color: var(--hero-ink); }
+  a { text-decoration: none; color: var(--muted); }
+  a:hover { color: var(--ink); }
 </style>
