@@ -1,0 +1,134 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><title>StayAwake visual identity</title>
+<link rel="icon" href="favicon/favicon.svg">
+<style>
+  :root{--bg:#0a1011;--surface:#121b1d;--ink:#eef2ef;--muted:#8fa0a5;--line:#233235;--amber:#ffb547;--accent:#ff5a36;--safe:#5fd39a;
+    --display:"Avenir Next Condensed","Helvetica Neue","Arial Narrow",Arial,sans-serif;--body:"Avenir Next","Helvetica Neue",Helvetica,Arial,sans-serif;--mono:ui-monospace,"SF Mono",Menlo,monospace}
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--ink);font:16px/1.5 var(--body);-webkit-font-smoothing:antialiased}
+  .wrap{max-width:1360px;margin:0 auto;padding:56px 40px 72px}
+  header{display:flex;align-items:center;gap:22px;margin-bottom:12px}
+  header img{width:92px;height:92px;margin:-8px}
+  h1{font:800 64px/.95 var(--display);text-transform:uppercase;letter-spacing:-.02em;margin:0}
+  h1 em{font-style:normal;color:var(--amber)}
+  .lede{color:var(--muted);max-width:70ch;margin:14px 0 0}
+  h2{font:600 12px/1 var(--mono);letter-spacing:.14em;text-transform:uppercase;color:var(--amber);margin:56px 0 18px}
+  .card{background:var(--surface);border:1px solid var(--line);border-radius:16px;padding:24px}
+  .label{font:600 11px/1.3 var(--mono);color:var(--muted);letter-spacing:.06em;margin-top:10px}
+  img{display:block;max-width:100%}
+  .icon-row{display:grid;grid-template-columns:auto 1fr;gap:28px;align-items:center}
+  .pair{display:flex;gap:12px;align-items:center}
+  .pair figure{margin:0;text-align:center}
+  .sizes{display:flex;align-items:flex-end;gap:22px;flex-wrap:wrap}
+  .sizes figure{margin:0;text-align:center}
+  .sizes .light{background:#e9ecea;border-radius:12px;padding:16px;display:flex;align-items:flex-end;gap:22px}
+  .sizes .light .label{color:#55646a}
+  .cands{display:grid;grid-template-columns:repeat(7,1fr);gap:12px}
+  .cands figure{margin:0}
+  .cands img{border-radius:12px;border:1px solid var(--line)}
+  .cands .pick img{outline:3px solid var(--amber);outline-offset:2px}
+  .hero img{border-radius:14px}
+  .two{display:grid;grid-template-columns:1fr 1fr;gap:20px}
+  .two figure,.grid4 figure{margin:0}
+  .two img,.grid4 img{border-radius:14px;border:1px solid var(--line)}
+  .grid4{display:grid;grid-template-columns:1fr 1fr;gap:20px}
+  .fav{display:flex;gap:28px;align-items:flex-end}
+  .fav figure{margin:0;text-align:center}
+  .swatches{display:grid;grid-template-columns:repeat(8,1fr);gap:12px}
+  .sw{border-radius:12px;height:84px;border:1px solid var(--line)}
+  .sw + .label{color:var(--ink)}
+  .sw + .label span{display:block;color:var(--muted);font-weight:500}
+  .type{display:grid;grid-template-columns:1fr 1fr 1fr;gap:20px}
+  .type .d{font:800 44px/1 var(--display);text-transform:uppercase}
+  .type .b{font:500 20px/1.4 var(--body)}
+  .type .m{font:600 15px/1.4 var(--mono);color:var(--amber);letter-spacing:.1em;text-transform:uppercase}
+  .ref:not([src]){display:none}
+</style></head><body><div class="wrap">
+
+<header><img src="icon/icon-1024.png" alt="StayAwake icon"><h1>Stay<em>Awake</em></h1></header>
+<p class="lede">Visual identity. Direction "night watch": an amber crescent moon inside a safety gauge ring on the same deep ink squircle as TidyDrive. The moon says awake at night, the ring says it is measured and has limits.</p>
+
+<h2>App icon</h2>
+<div class="card icon-row">
+  <div class="pair">
+    <figure><img src="icon/icon-1024.png" width="300" alt=""><div class="label">STAYAWAKE</div></figure>
+    <figure id="sib"><img class="ref" data-src="source/_ref-tidydrive.png" width="300" alt=""><div class="label">TIDYDRIVE (SIBLING)</div></figure>
+  </div>
+  <div class="sizes">
+    <figure><img src="icon/AppIcon.iconset/icon_256x256.png" width="128" alt=""><div class="label">128</div></figure>
+    <figure><img src="icon/AppIcon.iconset/icon_128x128.png" width="64" alt=""><div class="label">64</div></figure>
+    <figure><img src="icon/AppIcon.iconset/icon_32x32@2x.png" width="32" alt=""><div class="label">32</div></figure>
+    <figure><img src="icon/AppIcon.iconset/icon_16x16@2x.png" width="16" alt=""><div class="label">16</div></figure>
+    <div class="light">
+      <figure><img src="icon/AppIcon.iconset/icon_256x256.png" width="64" alt=""><div class="label">64</div></figure>
+      <figure><img src="icon/AppIcon.iconset/icon_32x32@2x.png" width="32" alt=""><div class="label">32</div></figure>
+      <figure><img src="icon/AppIcon.iconset/icon_16x16@2x.png" width="16" alt=""><div class="label">16</div></figure>
+    </div>
+    <figure><img src="icon/icon-small-glyph-512.png" width="128" alt=""><div class="label">SMALL-SIZE GLYPH<br>(16 AND 32 PX)</div></figure>
+  </div>
+</div>
+
+<h2>Icon candidates</h2>
+<div class="cands">
+  <figure><img src="icon/candidates/icon-a-moon-gauge.webp" alt=""><div class="label">A MOON GAUGE</div></figure>
+  <figure class="pick"><img src="icon/candidates/icon-a2-moon-gauge-bold.png" alt=""><div class="label">A2 BOLD (PICKED)</div></figure>
+  <figure><img src="icon/candidates/icon-a3-moon-gauge-clean.webp" alt=""><div class="label">A3 CLEAN</div></figure>
+  <figure><img src="icon/candidates/icon-b-awake-eye.webp" alt=""><div class="label">B AWAKE EYE</div></figure>
+  <figure><img src="icon/candidates/icon-c-laptop-moon.webp" alt=""><div class="label">C LAPTOP SHIELD</div></figure>
+  <figure><img src="icon/candidates/icon-d-cup-moon.webp" alt=""><div class="label">D COFFEE MOON</div></figure>
+  <figure><img src="icon/candidates/icon-e-moon-thermo.webp" alt=""><div class="label">E MOON THERMO</div></figure>
+</div>
+
+<h2>Hero</h2>
+<figure class="hero" style="margin:0"><img src="web/hero-2400.webp" alt=""><div class="label">WEB/HERO-2400.WEBP, HERO-1600.WEBP</div></figure>
+
+<h2>Open Graph and alternate hero</h2>
+<div class="two">
+  <figure><img src="web/og.png" alt=""><div class="label">WEB/OG.PNG 1200x630</div></figure>
+  <figure><img src="web/hero-alt-1600.webp" alt=""><div class="label">WEB/HERO-ALT-1600.WEBP (NOT IN USE)</div></figure>
+</div>
+
+<h2>Feature illustrations</h2>
+<div class="grid4">
+  <figure><img src="web/feature-safety.webp" alt=""><div class="label">SAFETY LIMITS: TEMPERATURE, BATTERY FLOOR, TIME CAP</div></figure>
+  <figure><img src="web/feature-schedule.webp" alt=""><div class="label">WEEKLY SCHEDULE</div></figure>
+  <figure><img src="web/feature-unplug.webp" alt=""><div class="label">UNPLUG ALERT</div></figure>
+  <figure><img src="web/feature-failsafe.webp" alt=""><div class="label">FAIL-SAFE</div></figure>
+</div>
+
+<h2>Favicons</h2>
+<div class="card fav">
+  <figure><img src="favicon/favicon.svg" width="96" alt=""><div class="label">FAVICON.SVG</div></figure>
+  <figure><img src="favicon/apple-touch-icon.png" width="90" style="border-radius:20px" alt=""><div class="label">APPLE-TOUCH 180</div></figure>
+  <figure><img src="favicon/icon-192.png" width="64" alt=""><div class="label">192</div></figure>
+  <figure><img src="favicon/favicon-32.png" width="32" alt=""><div class="label">32</div></figure>
+  <figure><img src="favicon/favicon-16.png" width="16" alt=""><div class="label">16</div></figure>
+  <figure><div class="label">+ FAVICON.ICO (16/32/48), ICON-512.PNG</div></figure>
+</div>
+
+<h2>Palette</h2>
+<div class="swatches">
+  <div><div class="sw" style="background:#0a1011"></div><div class="label">INK NIGHT<span>#0a1011</span></div></div>
+  <div><div class="sw" style="background:#0d1517"></div><div class="label">INK<span>#0d1517</span></div></div>
+  <div><div class="sw" style="background:#1c2e32"></div><div class="label">INK TEAL<span>#1c2e32</span></div></div>
+  <div><div class="sw" style="background:#3a4a4d"></div><div class="label">SLATE TRACK<span>#3a4a4d</span></div></div>
+  <div><div class="sw" style="background:#ffb547"></div><div class="label">AMBER (ACCENT)<span>#ffb547</span></div></div>
+  <div><div class="sw" style="background:#ff5a36"></div><div class="label">VERMILION<span>#ff5a36</span></div></div>
+  <div><div class="sw" style="background:#5fd39a"></div><div class="label">MINT SAFE<span>#5fd39a</span></div></div>
+  <div><div class="sw" style="background:#f3f5f2"></div><div class="label">PAPER<span>#f3f5f2</span></div></div>
+</div>
+
+<h2>Type (same stack as TidyDrive)</h2>
+<div class="card type">
+  <div><div class="d">Lid shut. <span style="color:var(--amber)">Still working.</span></div><div class="label">DISPLAY: AVENIR NEXT CONDENSED 800, UPPERCASE</div></div>
+  <div><div class="b">Keeps your agents running in the backpack, and sleeps before heat or a flat battery do.</div><div class="label">BODY: AVENIR NEXT</div></div>
+  <div><div class="m">Closed-lid Mac, on battery</div><div class="label">KICKER: SF MONO / UI-MONOSPACE</div></div>
+</div>
+
+</div>
+<script>
+  // The TidyDrive reference only exists while rendering the PNG; hide it otherwise.
+  const r = document.querySelector('.ref'); const i = new Image();
+  i.onload = () => { r.src = r.dataset.src; }; i.onerror = () => document.getElementById('sib').remove(); i.src = r.dataset.src;
+</script>
+</body></html>
