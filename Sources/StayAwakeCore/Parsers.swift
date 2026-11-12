@@ -71,6 +71,8 @@ public struct BatterySample: Equatable, Sendable {
     public static func celsius(fromRaw raw: Int) -> Double { Double(raw) / 100 }
 
     public var temperature: Double? { rawTemperature.map(Self.celsius(fromRaw:)) }
+    /// Same unit as `Temperature`; reads 4 to 5 C higher on an M2 Max.
+    public var virtualTemperature: Double? { rawVirtualTemperature.map(Self.celsius(fromRaw:)) }
 }
 
 public enum IORegBatteryParser {

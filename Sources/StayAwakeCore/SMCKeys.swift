@@ -87,17 +87,24 @@ public enum SMCTemperatureKeys {
 /// SMC keys it came from, and a short source line for `--report`.
 public struct TemperatureChoice: Equatable, Sendable {
     public var value: Double?
-    /// Max over the SMC keys that were used, nil when none was.
+    /// The SMC value behind `value` (mean of the curated keys, or the
+    /// fallback max), nil when SMC gave nothing.
     public var smc: Double?
     /// The SMC keys behind `smc`, plausible ones only.
     public var used: [SMCKey]
     public var source: String
-    public init(value: Double?, smc: Double?, used: [SMCKey], source: String) {
+    public var kind: TemperatureSource
+    /// The HID reading, kept as the cross-check.
+    public var hid: Double?
+    public init(value: Double?, smc: Double?, used: [SMCKey], source: String,
+                kind: TemperatureSource = .smc, hid: Double? = nil) {
         self.value = value
         self.smc = smc
         self.used = used
         self.source = source
+        self.kind = value == nil ? .none : kind
+        self.hid = hid
     }
 
-    public static let none = TemperatureChoice(value: nil, smc: nil, used: [], source: "none")
+    public static let none = TemperatureChoice(value: nil, smc: nil, used: [], source: "none", kind: .none)
 }

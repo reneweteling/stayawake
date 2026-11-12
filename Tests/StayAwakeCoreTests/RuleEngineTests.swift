@@ -5,11 +5,18 @@ final class RuleEngineTests: XCTestCase {
 
     // MARK: Temperature rules
 
+    /// Sustain and hysteresis on their own: smoothing off, a 20 s wait.
+    private func mechanics(_ c: inout Config) {
+        c.smoothingSeconds = 0
+        c.cpuSustainSeconds = 20
+        c.gpuSustainSeconds = 20
+    }
+
     func testCpuTripsAtLimitAfterSustain() {
-        var rig = Rig()
+        var rig = Rig(tweak: mechanics)
         rig.arm()
         XCTAssertEqual(rig.last?.phase, .holding)
-        rig.snap.cpuTemperature = 90
+        rig.snap.cpuTemperature = 102
         let ds = rig.advance(30, step: 10, jitter: false)
         XCTAssertEqual(ds[0].phase, .holding)
         XCTAssertEqual(ds[1].phase, .holding)
@@ -21,64 +28,64 @@ final class RuleEngineTests: XCTestCase {
     func testCpuDoesNotTripBelowLimit() {
         var rig = Rig()
         rig.arm()
-        rig.snap.cpuTemperature = 89.9
+        rig.snap.cpuTemperature = 101.9
         let ds = rig.advance(600)
         XCTAssertTrue(ds.allSatisfy { $0.phase == .holding })
     }
 
     func testSpikeShorterThanSustainDoesNotTrip() {
-        var rig = Rig()
+        var rig = Rig(tweak: mechanics)
         rig.arm()
-        rig.snap.cpuTemperature = 90
+        rig.snap.cpuTemperature = 102
         rig.advance(10, step: 10, jitter: false)
         rig.snap.cpuTemperature = 60
         rig.advance(10, step: 10, jitter: false)
-        rig.snap.cpuTemperature = 90
+        rig.snap.cpuTemperature = 102
         let ds = rig.advance(10, step: 10, jitter: false)
         XCTAssertEqual(ds.last?.phase, .holding, "the counter started over")
     }
 
     func testZeroSustainTripsImmediately() {
-        var rig = Rig(tweak: { $0.cpuSustainSeconds = 0 })
+        var rig = Rig(tweak: { $0.cpuSustainSeconds = 0; $0.smoothingSeconds = 0 })
         rig.arm()
-        rig.snap.cpuTemperature = 90
+        rig.snap.cpuTemperature = 102
         XCTAssertEqual(rig.eval().phase, .tripped)
     }
 
     func testCpuHysteresisKeepsRuleFailingUntilClearsAt() {
-        var rig = Rig()
+        var rig = Rig(tweak: mechanics)
         rig.config.cpuSustainSeconds = 0
         rig.arm()
-        rig.snap.cpuTemperature = 95
+        rig.snap.cpuTemperature = 107
         XCTAssertEqual(rig.eval().phase, .tripped)
-        rig.snap.cpuTemperature = 85
-        XCTAssertEqual(rig.advance(15, jitter: false).last?.rules, [.cpuTemperature], "still above 80")
-        rig.snap.cpuTemperature = 80.5
+        rig.snap.cpuTemperature = 97
+        XCTAssertEqual(rig.advance(15, jitter: false).last?.rules, [.cpuTemperature], "still above 92")
+        rig.snap.cpuTemperature = 92.5
         XCTAssertEqual(rig.advance(15, jitter: false).last?.rules, [.cpuTemperature])
-        rig.snap.cpuTemperature = 80
+        rig.snap.cpuTemperature = 92
         XCTAssertEqual(rig.advance(15, jitter: false).last?.rules, [], "clears at limit minus 10")
     }
 
     func testArmRefusedWhileLatchedAboveClearsAt() {
-        var rig = Rig()
+        var rig = Rig(tweak: mechanics)
         rig.config.cpuSustainSeconds = 0
         rig.arm()
-        rig.snap.cpuTemperature = 95
+        rig.snap.cpuTemperature = 107
         rig.eval()
-        rig.snap.cpuTemperature = 85
+        rig.snap.cpuTemperature = 97
         let refused = rig.arm()
         guard case .refused(let reasons) = refused.outcome else { return XCTFail("expected refusal") }
         XCTAssertEqual(reasons.map(\.rule), [.cpuTemperature])
         XCTAssertEqual(rig.state.phase, .tripped, "refused arm leaves the state alone")
-        rig.snap.cpuTemperature = 75
+        rig.snap.cpuTemperature = 87
         rig.eval()
         XCTAssertEqual(rig.arm().outcome, .holding)
     }
 
     func testGpuTripsLikeCpu() {
-        var rig = Rig()
+        var rig = Rig(tweak: mechanics)
         rig.arm()
-        rig.snap.gpuTemperature = 85
+        rig.snap.gpuTemperature = 100
         let ds = rig.advance(30, step: 10, jitter: false)
         XCTAssertEqual(ds[1].phase, .holding)
         XCTAssertEqual(ds[2].phase, .tripped)
@@ -87,15 +94,15 @@ final class RuleEngineTests: XCTestCase {
     }
 
     func testGpuBelowLimitHysteresisAndSpike() {
-        var rig = Rig(tweak: { $0.gpuSustainSeconds = 0 })
+        var rig = Rig(tweak: { $0.gpuSustainSeconds = 0; $0.smoothingSeconds = 0 })
         rig.arm()
-        rig.snap.gpuTemperature = 84.9
+        rig.snap.gpuTemperature = 99.9
         XCTAssertEqual(rig.eval().phase, .holding)
-        rig.snap.gpuTemperature = 85
+        rig.snap.gpuTemperature = 100
         XCTAssertEqual(rig.eval().phase, .tripped)
-        rig.snap.gpuTemperature = 76
+        rig.snap.gpuTemperature = 91
         XCTAssertEqual(rig.eval().rules, [.gpuTemperature])
-        rig.snap.gpuTemperature = 75
+        rig.snap.gpuTemperature = 90
         XCTAssertEqual(rig.eval().rules, [])
     }
 
@@ -109,7 +116,7 @@ final class RuleEngineTests: XCTestCase {
 
     func testGpuIncludedInNextToTrip() {
         var rig = Rig()
-        rig.snap.gpuTemperature = 78
+        rig.snap.gpuTemperature = 92
         rig.snap.cpuTemperature = 50
         rig.arm()
         let d = rig.eval()
@@ -119,7 +126,7 @@ final class RuleEngineTests: XCTestCase {
 
     func testDisabledGpuRuleIsIgnored() {
         var rig = Rig(tweak: { $0.gpuEnabled = false; $0.gpuSustainSeconds = 0 })
-        rig.snap.gpuTemperature = 99
+        rig.snap.gpuTemperature = 109
         rig.arm()
         XCTAssertEqual(rig.eval().phase, .holding)
         XCTAssertFalse(rig.last!.margins.contains { $0.rule == .gpuTemperature })
@@ -128,36 +135,72 @@ final class RuleEngineTests: XCTestCase {
     func testBatteryTemperatureTripsAtLimitAfterSustain() {
         var rig = Rig()
         rig.arm()
-        rig.snap.batteryTemperature = 40
-        let ds = rig.advance(40, step: 10, jitter: false)
-        XCTAssertEqual(ds[2].phase, .holding, "20 s at the limit")
-        XCTAssertEqual(ds[3].trip?.rule, .batteryTemperature, "30 s at the limit")
+        rig.snap.batteryTemperature = 43
+        let ds = rig.advance(70, step: 10, jitter: false)
+        XCTAssertEqual(ds[5].phase, .holding, "50 s at the limit")
+        XCTAssertEqual(ds[6].trip?.rule, .batteryTemperature, "60 s at the limit")
     }
 
-    func testBatteryTemperatureClearsAtFourDegreesBelow() {
+    func testBatteryTemperatureClearsAtThreeDegreesBelow() {
         var rig = Rig(tweak: { $0.batteryTempSustainSeconds = 0 })
         rig.arm()
-        rig.snap.batteryTemperature = 41
+        rig.snap.batteryTemperature = 44
         rig.eval()
-        rig.snap.batteryTemperature = 36.5
+        rig.snap.batteryTemperature = 40.5
         XCTAssertEqual(rig.eval().rules, [.batteryTemperature])
-        rig.snap.batteryTemperature = 36
+        rig.snap.batteryTemperature = 40
         XCTAssertEqual(rig.eval().rules, [])
     }
 
-    func testThermalPressureTripsAtSeriousNotFair() {
+    func testThermalSeriousTripsOnlyAfterFiveMinutes() {
         var rig = Rig()
         rig.arm()
         rig.snap.thermal = .fair
         XCTAssertEqual(rig.eval().phase, .holding)
         rig.snap.thermal = .serious
-        let d = rig.eval()
-        XCTAssertEqual(d.phase, .tripped)
-        XCTAssertEqual(d.trip?.rule, .thermalPressure)
+        XCTAssertEqual(rig.eval().phase, .holding, "serious starts the 5 minute wait")
+        let ds = rig.advance(300)
+        XCTAssertEqual(ds[18].phase, .holding, "285 s serious")
+        XCTAssertEqual(ds[19].trip?.rule, .thermalPressure, "300 s serious")
+        XCTAssertTrue(ds[19].trip!.message.contains("for 300 s"), ds[19].trip!.message)
+    }
+
+    func testThermalSeriousThatDropsBackStartsOver() {
+        var rig = Rig()
+        rig.arm()
+        rig.snap.thermal = .serious
+        rig.advance(240)
+        rig.snap.thermal = .fair
+        rig.eval()
+        rig.snap.thermal = .serious
+        XCTAssertTrue(rig.advance(240).allSatisfy { $0.phase == .holding })
+        XCTAssertNotNil(rig.last!.margins.first { $0.rule == .thermalPressure }?.seconds, "the wait shows as time left")
+    }
+
+    func testThermalCriticalTripsAtOnce() {
+        var rig = Rig()
+        rig.arm()
+        rig.snap.thermal = .critical
+        XCTAssertEqual(rig.eval().trip?.rule, .thermalPressure)
+        var relaxed = Rig(tweak: { $0.thermalLimit = .critical })
+        relaxed.arm()
+        relaxed.snap.thermal = .serious
+        XCTAssertTrue(relaxed.advance(900).allSatisfy { $0.phase == .holding }, "critical only")
+        relaxed.snap.thermal = .critical
+        XCTAssertEqual(relaxed.eval().trip?.rule, .thermalPressure)
+    }
+
+    func testThermalSeriousWaitIsConfigurable() {
+        var rig = Rig(tweak: { $0.thermalSustainSeconds = 60 })
+        rig.arm()
+        rig.snap.thermal = .serious
+        let ds = rig.advance(75)
+        XCTAssertEqual(ds[3].phase, .holding, "45 s serious")
+        XCTAssertEqual(ds[4].trip?.rule, .thermalPressure, "60 s serious")
     }
 
     func testThermalLimitFairTripsAtFair() {
-        var rig = Rig(tweak: { $0.thermalLimit = .fair })
+        var rig = Rig(tweak: { $0.thermalLimit = .fair; $0.thermalSustainSeconds = 0 })
         rig.arm()
         rig.snap.thermal = .fair
         XCTAssertEqual(rig.eval().trip?.rule, .thermalPressure)
@@ -270,7 +313,7 @@ final class RuleEngineTests: XCTestCase {
         rig.snap.batteryTemperature = nil
         rig.arm()
         XCTAssertTrue(rig.advance(300).allSatisfy { $0.phase == .holding })
-        rig.snap.thermal = .serious
+        rig.snap.thermal = .critical
         XCTAssertEqual(rig.eval().trip?.rule, .thermalPressure)
     }
 
@@ -282,7 +325,7 @@ final class RuleEngineTests: XCTestCase {
             $0.floorEnabled = false; $0.lidEnabled = false; $0.networkEnabled = false; $0.capEnabled = false
             $0.idleEnabled = false; $0.cpuSustainSeconds = 0
         })
-        rig.snap.cpuTemperature = 99
+        rig.snap.cpuTemperature = 109
         rig.snap.batteryTemperature = 49
         rig.snap.thermal = .critical
         rig.snap.batteryPercent = 6
@@ -298,7 +341,7 @@ final class RuleEngineTests: XCTestCase {
     func testPriorityWhenSeveralRulesTrip() {
         var rig = Rig(tweak: { $0.cpuSustainSeconds = 0; $0.batteryTempSustainSeconds = 0 })
         rig.arm()
-        rig.snap.cpuTemperature = 90
+        rig.snap.cpuTemperature = 102
         rig.snap.batteryTemperature = 45
         rig.snap.batteryPercent = 10
         rig.snap.networkUsable = false
@@ -422,9 +465,9 @@ final class RuleEngineTests: XCTestCase {
     // MARK: Sleep gap
 
     func testSleepGapResetsSustain() {
-        var rig = Rig()
+        var rig = Rig(tweak: mechanics)
         rig.arm()
-        rig.snap.cpuTemperature = 90
+        rig.snap.cpuTemperature = 102
         rig.eval()
         rig.sleep(100)
         XCTAssertEqual(rig.eval().phase, .holding, "counter restarted after the gap")
@@ -444,9 +487,9 @@ final class RuleEngineTests: XCTestCase {
     }
 
     func testShortGapKeepsSustain() {
-        var rig = Rig()
+        var rig = Rig(tweak: mechanics)
         rig.arm()
-        rig.snap.cpuTemperature = 90
+        rig.snap.cpuTemperature = 102
         rig.eval()
         rig.sleep(25)
         XCTAssertEqual(rig.eval().phase, .tripped, "25 s is below two intervals")
@@ -618,10 +661,10 @@ final class RuleEngineTests: XCTestCase {
     }
 
     func testAcknowledgeClearsTrippedPhase() {
-        var rig = Rig()
+        var rig = Rig(tweak: mechanics)
         rig.config.cpuSustainSeconds = 0
         rig.arm()
-        rig.snap.cpuTemperature = 90
+        rig.snap.cpuTemperature = 105
         rig.eval()
         XCTAssertEqual(RuleEngine.acknowledge(rig.state).phase, .off)
     }
@@ -629,7 +672,7 @@ final class RuleEngineTests: XCTestCase {
     func testStaysTrippedWithoutRearmSetting() {
         var rig = Rig(tweak: { $0.thermalLimit = .serious })
         rig.arm()
-        rig.snap.thermal = .serious
+        rig.snap.thermal = .critical
         rig.eval()
         rig.snap.thermal = .nominal
         rig.snap.didWake = true
@@ -639,7 +682,7 @@ final class RuleEngineTests: XCTestCase {
     func testRearmOnWakeWhenAllRulesClear() {
         var rig = Rig(tweak: { $0.afterTrip = .rearmOnWake })
         rig.arm()
-        rig.snap.thermal = .serious
+        rig.snap.thermal = .critical
         rig.eval()
         rig.snap.thermal = .nominal
         XCTAssertEqual(rig.eval().phase, .tripped, "no wake yet")
@@ -650,20 +693,20 @@ final class RuleEngineTests: XCTestCase {
     }
 
     func testRearmOnWakeWaitsWhileRuleStillFailing() {
-        var rig = Rig(tweak: { $0.afterTrip = .rearmOnWake; $0.cpuSustainSeconds = 0 })
+        var rig = Rig(tweak: { $0.afterTrip = .rearmOnWake; $0.cpuSustainSeconds = 0; $0.smoothingSeconds = 0 })
         rig.arm()
-        rig.snap.cpuTemperature = 95
+        rig.snap.cpuTemperature = 107
         rig.eval()
-        rig.snap.cpuTemperature = 85
+        rig.snap.cpuTemperature = 97
         rig.snap.didWake = true
-        XCTAssertEqual(rig.eval().phase, .tripped, "85 is above the clears-at level of 80")
+        XCTAssertEqual(rig.eval().phase, .tripped, "97 is above the clears-at level of 92")
     }
 
     func testRearmOnWakeDetectsWakeFromSleepGap() {
         var rig = Rig(tweak: { $0.afterTrip = .rearmOnWake })
         rig.arm()
-        rig.snap.thermal = .serious
-        rig.eval()
+        rig.snap.thermal = .critical
+        XCTAssertEqual(rig.eval().phase, .tripped)
         rig.snap.thermal = .nominal
         rig.sleep(3600)
         XCTAssertEqual(rig.eval().phase, .holding)

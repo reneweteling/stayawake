@@ -4,10 +4,13 @@ import XCTest
 final class ConfigTests: XCTestCase {
     func testDefaultsMatchTheSpec() {
         let c = Config()
-        XCTAssertTrue(c.cpuEnabled); XCTAssertEqual(c.cpuLimit, 90); XCTAssertEqual(c.cpuSustainSeconds, 20); XCTAssertEqual(c.cpuClearMargin, 10)
-        XCTAssertTrue(c.gpuEnabled); XCTAssertEqual(c.gpuLimit, 85); XCTAssertEqual(c.gpuSustainSeconds, 20); XCTAssertEqual(c.gpuClearMargin, 10)
-        XCTAssertEqual(c.batteryTempLimit, 40); XCTAssertEqual(c.batteryTempSustainSeconds, 30); XCTAssertEqual(c.batteryTempClearMargin, 4)
-        XCTAssertEqual(c.thermalLimit, .serious)
+        XCTAssertEqual(c.configVersion, Config.currentVersion)
+        XCTAssertTrue(c.cpuEnabled); XCTAssertEqual(c.cpuLimit, 102); XCTAssertEqual(c.cpuSustainSeconds, 120); XCTAssertEqual(c.cpuClearMargin, 10)
+        XCTAssertEqual(c.smoothingSeconds, 60)
+        XCTAssertTrue(c.gpuEnabled); XCTAssertEqual(c.gpuLimit, 100); XCTAssertEqual(c.gpuSustainSeconds, 120); XCTAssertEqual(c.gpuClearMargin, 10)
+        XCTAssertEqual(c.batteryTempLimit, 43); XCTAssertEqual(c.batteryTempSustainSeconds, 60); XCTAssertEqual(c.batteryTempClearMargin, 3)
+        XCTAssertFalse(c.batteryHeatingEnabled); XCTAssertEqual(c.batteryHeatingRise, 2)
+        XCTAssertEqual(c.thermalLimit, .serious); XCTAssertEqual(c.thermalSustainSeconds, 300)
         XCTAssertEqual(c.floorPercent, 20)
         XCTAssertEqual(c.lidMinutes, 90)
         XCTAssertEqual(c.idleCpuPercent, 10); XCTAssertEqual(c.idleMinutes, 15)
@@ -30,14 +33,16 @@ final class ConfigTests: XCTestCase {
         c.cpuLimit = 10; c.cpuSustainSeconds = -5; c.cpuClearMargin = 0
         c.gpuLimit = 500; c.gpuSustainSeconds = 9999; c.gpuClearMargin = 99
         c.batteryTempLimit = 5; c.batteryTempSustainSeconds = 1000; c.batteryTempClearMargin = 50
+        c.thermalSustainSeconds = 5000; c.batteryHeatingRise = 0; c.smoothingSeconds = -1
         c.floorPercent = 1; c.lidMinutes = 5000; c.idleCpuPercent = 90; c.idleMinutes = 1
         c.watchedMinutes = 1; c.networkMinutes = 1; c.capHours = 100; c.sensorFailureSeconds = 5
         c.headsUpMinutes = 90; c.logRetentionDays = 2; c.sampleMinutes = 500
         c.holdingIntervalSeconds = 1; c.offIntervalSeconds = 1000; c.leaseSeconds = 1000
         let k = c.clamped()
         XCTAssertEqual(k.cpuLimit, 60); XCTAssertEqual(k.cpuSustainSeconds, 0); XCTAssertEqual(k.cpuClearMargin, 2)
-        XCTAssertEqual(k.gpuLimit, 100); XCTAssertEqual(k.gpuSustainSeconds, 120); XCTAssertEqual(k.gpuClearMargin, 20)
-        XCTAssertEqual(k.batteryTempLimit, 30); XCTAssertEqual(k.batteryTempSustainSeconds, 120); XCTAssertEqual(k.batteryTempClearMargin, 10)
+        XCTAssertEqual(k.gpuLimit, 110); XCTAssertEqual(k.gpuSustainSeconds, 300); XCTAssertEqual(k.gpuClearMargin, 20)
+        XCTAssertEqual(k.batteryTempLimit, 30); XCTAssertEqual(k.batteryTempSustainSeconds, 300); XCTAssertEqual(k.batteryTempClearMargin, 10)
+        XCTAssertEqual(k.thermalSustainSeconds, 600); XCTAssertEqual(k.batteryHeatingRise, 0.5); XCTAssertEqual(k.smoothingSeconds, 0)
         XCTAssertEqual(k.floorPercent, 5); XCTAssertEqual(k.lidMinutes, 480); XCTAssertEqual(k.idleCpuPercent, 50); XCTAssertEqual(k.idleMinutes, 5)
         XCTAssertEqual(k.watchedMinutes, 5); XCTAssertEqual(k.networkMinutes, 2); XCTAssertEqual(k.capHours, 24); XCTAssertEqual(k.sensorFailureSeconds, 30)
         XCTAssertEqual(k.headsUpMinutes, 30); XCTAssertEqual(k.logRetentionDays, 7); XCTAssertEqual(k.sampleMinutes, 60)
@@ -46,7 +51,7 @@ final class ConfigTests: XCTestCase {
 
     func testRangeEdgesAreKept() {
         var c = Config()
-        c.cpuLimit = 60; c.gpuLimit = 100; c.floorPercent = 60; c.capHours = 1; c.lidMinutes = 10
+        c.cpuLimit = 60; c.gpuLimit = 110; c.cpuSustainSeconds = 300; c.floorPercent = 60; c.capHours = 1; c.lidMinutes = 10
         XCTAssertEqual(c.clamped(), c)
     }
 
@@ -83,8 +88,10 @@ final class ConfigTests: XCTestCase {
         let old = #"{"cpuLimit": 75, "capHours": 4, "removedLongAgo": true}"#
         let c = try Config.decodeLenient(from: Data(old.utf8))
         XCTAssertEqual(c.cpuLimit, 75)
+        XCTAssertEqual(c.cpuSustainSeconds, 20, "an edited rule keeps its old wait")
         XCTAssertEqual(c.capHours, 4)
-        XCTAssertEqual(c.gpuLimit, 85, "new fields take their default")
+        XCTAssertEqual(c.gpuLimit, 100, "missing fields take the new default")
+        XCTAssertEqual(c.configVersion, Config.currentVersion)
         XCTAssertTrue(c.alertOnUnplug)
         XCTAssertEqual(c.schedule, .default)
     }
@@ -106,5 +113,58 @@ final class ConfigTests: XCTestCase {
         c.schedule = weekdays([TimeWindow(start: 60, end: 120)], on: [0, 6])
         let back = try Config.decodeLenient(from: JSONEncoder().encode(c))
         XCTAssertEqual(back, c)
+    }
+
+    // MARK: Version 1 to 2
+
+    /// What version 1 stored for a user who never touched the heat limits.
+    private func v1Blob(_ overrides: [String: Any] = [:]) throws -> Data {
+        var d: [String: Any] = ["cpuEnabled": true, "cpuLimit": 90, "cpuSustainSeconds": 20, "cpuClearMargin": 10,
+                                "gpuEnabled": true, "gpuLimit": 85, "gpuSustainSeconds": 20, "gpuClearMargin": 10,
+                                "batteryTempEnabled": true, "batteryTempLimit": 40, "batteryTempSustainSeconds": 30,
+                                "batteryTempClearMargin": 4, "thermalEnabled": true, "thermalLimit": "serious",
+                                "floorPercent": 20, "capHours": 8]
+        for (k, v) in overrides { d[k] = v }
+        return try JSONSerialization.data(withJSONObject: d)
+    }
+
+    func testUntouchedVersion1DefaultsMoveToBalanced() throws {
+        let c = try Config.decodeLenient(from: v1Blob())
+        XCTAssertEqual(c, Config(), "an untouched install ends up on the new defaults")
+        XCTAssertEqual(SafetyPreset.matching(c), .balanced)
+    }
+
+    func testEditedVersion1RuleKeepsItsValues() throws {
+        let c = try Config.decodeLenient(from: v1Blob(["cpuLimit": 95, "batteryTempSustainSeconds": 45]))
+        XCTAssertEqual(c.cpuLimit, 95)
+        XCTAssertEqual(c.cpuSustainSeconds, 20, "the CPU rule was edited, so its wait stays too")
+        XCTAssertEqual(c.batteryTempLimit, 40)
+        XCTAssertEqual(c.batteryTempSustainSeconds, 45)
+        XCTAssertEqual(c.gpuLimit, 100, "the untouched GPU rule still moves")
+        XCTAssertEqual(c.gpuSustainSeconds, 120)
+        XCTAssertEqual(c.batteryTempClearMargin, 3)
+    }
+
+    func testVersion2IsNotMigratedAgain() throws {
+        // A version 2 user who picked 90 C on purpose keeps it.
+        var mine = Config()
+        mine.cpuLimit = 90; mine.cpuSustainSeconds = 20
+        let back = try Config.decodeLenient(from: JSONEncoder().encode(mine))
+        XCTAssertEqual(back.cpuLimit, 90)
+        XCTAssertEqual(back.cpuSustainSeconds, 20)
+    }
+
+    func testMigrationIsIdempotent() throws {
+        let once = try Config.decodeLenient(from: v1Blob(["gpuLimit": 80]))
+        let twice = try Config.decodeLenient(from: JSONEncoder().encode(once))
+        XCTAssertEqual(once, twice)
+    }
+
+    func testRangesComeFromOnePlace() {
+        var c = Config()
+        c.cpuLimit = ConfigRange.cpuLimit.upperBound + 5
+        c.batteryTempSustainSeconds = ConfigRange.sustainSeconds.upperBound + 1
+        XCTAssertEqual(c.clamped().cpuLimit, ConfigRange.cpuLimit.upperBound)
+        XCTAssertEqual(c.clamped().batteryTempSustainSeconds, ConfigRange.sustainSeconds.upperBound)
     }
 }

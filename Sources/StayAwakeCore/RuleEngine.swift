@@ -22,6 +22,13 @@ public struct EngineState: Codable, Equatable, Sendable {
     public var cpu = SensorTracker()
     public var gpu = SensorTracker()
     public var batteryTemp = SensorTracker()
+    /// Rolling windows and source hold of the CPU and GPU readings.
+    public var cpuSignal = SignalTracker()
+    public var gpuSignal = SignalTracker()
+    /// Battery readings of the last 5 minutes while the heating-up rule runs.
+    public var batteryHistory: [TimedValue] = []
+    /// Since when the thermal state is at or above the limit.
+    public var thermalSince: TimeInterval?
     public var lidSince: TimeInterval?
     public var idleSince: TimeInterval?
     public var noProcessSince: TimeInterval?
@@ -116,14 +123,21 @@ public enum RuleEngine {
     private struct SensorResult {
         var valid: Bool
         var active: Bool
+        /// The value the limit was compared with: the rolling mean for CPU and GPU.
+        var compared: Double?
+        var samples: Int
     }
 
     private static func fmt(_ v: Double) -> String {
         v == v.rounded() ? String(Int(v)) : String(format: "%.1f", v)
     }
 
-    private static func sensor(_ value: Double?, tracker: inout SensorTracker, enabled: Bool, limit: Double,
-                               sustain: Int, clearMargin: Double, rule: RuleID,
+    /// One temperature rule. `value` is the reading after the source hold.
+    /// Validity and stuck detection look at that reading; the limit and the
+    /// clears-at level are compared with the rolling mean over `smooth`
+    /// seconds when it is given, with the reading itself otherwise.
+    private static func sensor(_ value: Double?, smooth: TimeInterval?, samples: inout [TimedValue], tracker: inout SensorTracker,
+                               enabled: Bool, limit: Double, sustain: Int, clearMargin: Double, rule: RuleID,
                                latched: inout Set<RuleID>, now: TimeInterval, instant: Bool) -> SensorResult {
         var valid = false
         if let v = value, v >= 0, v <= 130 {
@@ -138,34 +152,46 @@ public enum RuleEngine {
         }
         if valid { tracker.invalidSince = nil } else { tracker.invalidSince = tracker.invalidSince ?? now }
 
+        var compared: Double?
+        var count = 0
+        if valid, let v = value {
+            if let window = smooth {
+                compared = Smoothing.add(v, samples: &samples, now: now, window: window)
+                count = samples.count
+            } else {
+                compared = v
+                count = 1
+            }
+        }
+
         guard enabled else {
             tracker.exceededSince = nil
             latched.remove(rule)
-            return SensorResult(valid: valid, active: false)
+            return SensorResult(valid: valid, active: false, compared: compared, samples: count)
         }
-        guard valid, let v = value else {
+        guard let v = compared else {
             tracker.exceededSince = nil
-            return SensorResult(valid: valid, active: latched.contains(rule))
+            return SensorResult(valid: valid, active: latched.contains(rule), compared: nil, samples: 0)
         }
         if latched.contains(rule) {
             if v <= limit - clearMargin {
                 latched.remove(rule)
                 tracker.exceededSince = nil
-                return SensorResult(valid: true, active: false)
+                return SensorResult(valid: true, active: false, compared: v, samples: count)
             }
-            return SensorResult(valid: true, active: true)
+            return SensorResult(valid: true, active: true, compared: v, samples: count)
         }
         if v >= limit {
             let since = tracker.exceededSince ?? now
             tracker.exceededSince = since
             if instant || now - since >= Double(sustain) {
                 latched.insert(rule)
-                return SensorResult(valid: true, active: true)
+                return SensorResult(valid: true, active: true, compared: v, samples: count)
             }
         } else {
             tracker.exceededSince = nil
         }
-        return SensorResult(valid: true, active: false)
+        return SensorResult(valid: true, active: false, compared: v, samples: count)
     }
 
     private static func step(_ snap: Snapshot, config: Config, state: EngineState, now: Moment,
@@ -184,6 +210,10 @@ public enum RuleEngine {
                 s[keyPath: path].invalidSince = nil
                 s[keyPath: path].lastChange = m
             }
+            s.cpuSignal = SignalTracker()
+            s.gpuSignal = SignalTracker()
+            s.batteryHistory = []
+            s.thermalSince = nil
         }
         let woke = snap.didWake || gap
         s.lastEvaluated = m
@@ -191,27 +221,38 @@ public enum RuleEngine {
         let thermalOnly = config.sensorPreference == .thermalStateOnly
         var failures: [TripInfo] = []
 
-        // Temperature rules.
+        // Temperature rules. CPU and GPU: source hold, then the rolling mean
+        // (60 s by default) against the limit. Battery: the hottest battery
+        // sensor as it is.
+        let window = TimeInterval(config.smoothingSeconds)
+        let avgText = config.smoothingSeconds > 0 ? " (\(config.smoothingSeconds) s average)" : ""
         func sustainText(_ n: Int) -> String { n > 0 ? " for \(n) s" : "" }
-        let cpu = sensor(thermalOnly ? nil : snap.cpuTemperature, tracker: &s.cpu, enabled: config.cpuEnabled && !thermalOnly,
+        let cpuIn = thermalOnly ? (value: nil, source: TemperatureSource.none)
+            : Smoothing.hold(snap.cpuTemperature, source: snap.cpuSource, tracker: &s.cpuSignal, now: m)
+        let cpu = sensor(cpuIn.value, smooth: window, samples: &s.cpuSignal.samples, tracker: &s.cpu,
+                         enabled: config.cpuEnabled && !thermalOnly,
                          limit: config.cpuLimit, sustain: config.cpuSustainSeconds, clearMargin: config.cpuClearMargin,
                          rule: .cpuTemperature, latched: &s.latched, now: m, instant: arming)
         if cpu.active {
-            let v = snap.cpuTemperature
+            let v = cpu.compared
             failures.append(TripInfo(rule: .cpuTemperature, value: v, limit: config.cpuLimit,
-                message: "CPU temperature \(v.map(fmt) ?? "unknown") °C is at or above \(fmt(config.cpuLimit)) °C\(sustainText(config.cpuSustainSeconds))",
+                message: "CPU temperature \(v.map(fmt) ?? "unknown") °C\(avgText) is at or above \(fmt(config.cpuLimit)) °C\(sustainText(config.cpuSustainSeconds))",
                 shortReason: RuleID.cpuTemperature.shortReason(value: v, config: config)))
         }
-        let gpu = sensor(thermalOnly ? nil : snap.gpuTemperature, tracker: &s.gpu, enabled: config.gpuEnabled && !thermalOnly,
+        let gpuIn = thermalOnly ? (value: nil, source: TemperatureSource.none)
+            : Smoothing.hold(snap.gpuTemperature, source: snap.gpuSource, tracker: &s.gpuSignal, now: m)
+        let gpu = sensor(gpuIn.value, smooth: window, samples: &s.gpuSignal.samples, tracker: &s.gpu,
+                         enabled: config.gpuEnabled && !thermalOnly,
                          limit: config.gpuLimit, sustain: config.gpuSustainSeconds, clearMargin: config.gpuClearMargin,
                          rule: .gpuTemperature, latched: &s.latched, now: m, instant: arming)
         if gpu.active {
-            let v = snap.gpuTemperature
+            let v = gpu.compared
             failures.append(TripInfo(rule: .gpuTemperature, value: v, limit: config.gpuLimit,
-                message: "GPU temperature \(v.map(fmt) ?? "unknown") °C is at or above \(fmt(config.gpuLimit)) °C\(sustainText(config.gpuSustainSeconds))",
+                message: "GPU temperature \(v.map(fmt) ?? "unknown") °C\(avgText) is at or above \(fmt(config.gpuLimit)) °C\(sustainText(config.gpuSustainSeconds))",
                 shortReason: RuleID.gpuTemperature.shortReason(value: v, config: config)))
         }
-        let bat = sensor(thermalOnly ? nil : snap.batteryTemperature, tracker: &s.batteryTemp, enabled: config.batteryTempEnabled && !thermalOnly,
+        var unsmoothed: [TimedValue] = []
+        let bat = sensor(thermalOnly ? nil : snap.batteryTemperature, smooth: nil, samples: &unsmoothed, tracker: &s.batteryTemp, enabled: config.batteryTempEnabled && !thermalOnly,
                          limit: config.batteryTempLimit, sustain: config.batteryTempSustainSeconds, clearMargin: config.batteryTempClearMargin,
                          rule: .batteryTemperature, latched: &s.latched, now: m, instant: arming)
         if bat.active {
@@ -221,11 +262,37 @@ public enum RuleEngine {
                 shortReason: RuleID.batteryTemperature.shortReason(value: v, config: config)))
         }
 
-        // Thermal pressure: no sustain, clears as soon as the level drops below the limit.
+        // Battery heating up: lid closed on battery only. Trips when the
+        // battery is more than the set rise above its coolest reading of the
+        // last 5 minutes. No sustain: the window is the wait.
+        var batteryRise: Double?
+        if config.batteryHeatingEnabled, !thermalOnly, snap.lidClosed, snap.powerSource == .battery,
+           bat.valid, let b = snap.batteryTemperature {
+            let rise = Smoothing.rise(b, history: &s.batteryHistory, now: m, window: Config.batteryHeatingWindowSeconds)
+            batteryRise = rise
+            if rise > config.batteryHeatingRise {
+                failures.append(TripInfo(rule: .batteryHeating, value: rise, limit: config.batteryHeatingRise,
+                    message: "Battery temperature rose \(String(format: "%.1f", rise)) °C in \(Int(Config.batteryHeatingWindowSeconds / 60)) min with the lid closed on battery, limit \(fmt(config.batteryHeatingRise)) °C",
+                    shortReason: RuleID.batteryHeating.shortReason(value: rise, config: config)))
+            }
+        } else {
+            s.batteryHistory = []
+        }
+
+        // Thermal pressure: critical trips at once. A lower level at or above
+        // the limit trips after it lasted `thermalSustainSeconds`. Clears as
+        // soon as the level drops below the limit.
         if config.thermalEnabled && snap.thermal >= config.thermalLimit {
-            failures.append(TripInfo(rule: .thermalPressure, value: Double(snap.thermal.rank), limit: Double(config.thermalLimit.rank),
-                message: "Thermal state is \(snap.thermal.rawValue), limit is \(config.thermalLimit.rawValue)",
-                shortReason: RuleID.thermalPressure.shortReason(value: nil, config: config)))
+            let since = s.thermalSince ?? m
+            s.thermalSince = since
+            if snap.thermal == .critical || arming || m - since >= Double(config.thermalSustainSeconds) {
+                let wait = snap.thermal == .critical ? "" : sustainText(config.thermalSustainSeconds)
+                failures.append(TripInfo(rule: .thermalPressure, value: Double(snap.thermal.rank), limit: Double(config.thermalLimit.rank),
+                    message: "Thermal state is \(snap.thermal.rawValue)\(wait), limit is \(config.thermalLimit.rawValue)",
+                    shortReason: RuleID.thermalPressure.shortReason(value: nil, config: config)))
+            }
+        } else {
+            s.thermalSince = nil
         }
 
         // Battery floor with hysteresis. An unreadable level fails closed.
@@ -391,7 +458,15 @@ public enum RuleEngine {
             s.drainSamples = []
         }
 
-        let margins = makeMargins(snap, config: config, state: s, now: now, scheduleOpen: scheduleOpen)
+        let signals = Signals(
+            cpu: SignalReading(instant: thermalOnly ? nil : snap.cpuTemperature, smoothed: cpu.compared,
+                               source: cpuIn.source, samples: cpu.samples),
+            gpu: SignalReading(instant: thermalOnly ? nil : snap.gpuTemperature, smoothed: gpu.compared,
+                               source: gpuIn.source, samples: gpu.samples),
+            battery: SignalReading(instant: thermalOnly ? nil : snap.batteryTemperature, smoothed: bat.compared,
+                                   source: bat.compared == nil ? .none : .smc, samples: bat.samples),
+            batteryRise: batteryRise)
+        let margins = makeMargins(snap, signals: signals, config: config, state: s, now: now, scheduleOpen: scheduleOpen)
         var shownFailing = failures
         if s.phase == .holding || prev == .holding, !scheduleOpen, config.schedule.enabled { shownFailing.append(scheduleTrip) }
         shownFailing.sort { $0.rule.priority < $1.rule.priority }
@@ -401,12 +476,12 @@ public enum RuleEngine {
             timerEnded: timerEnded, margins: margins, nextToTrip: Forecast.nextToTrip(margins),
             warnings: margins.filter { $0.fraction <= Forecast.warningFraction }.map(\.rule),
             timeLeft: Forecast.timeLeft(margins), scheduleOpen: scheduleOpen,
-            nextScheduleOpen: config.schedule.nextOpen(from: now.wall, in: now.timeZone))
+            nextScheduleOpen: config.schedule.nextOpen(from: now.wall, in: now.timeZone), signals: signals)
     }
 
     // MARK: - Margins
 
-    private static func makeMargins(_ snap: Snapshot, config: Config, state s: EngineState, now: Moment,
+    private static func makeMargins(_ snap: Snapshot, signals: Signals, config: Config, state s: EngineState, now: Moment,
                                     scheduleOpen: Bool) -> [RuleMargin] {
         let m = now.monotonic
         var out: [RuleMargin] = []
@@ -418,14 +493,28 @@ public enum RuleEngine {
                                   detail: "\(name) \(fmt(v))° of \(fmt(limit))°"))
         }
         let thermalOnly = config.sensorPreference == .thermalStateOnly
-        temp(.cpuTemperature, "CPU", snap.cpuTemperature, config.cpuLimit, enabled: config.cpuEnabled && !thermalOnly)
-        temp(.gpuTemperature, "GPU", snap.gpuTemperature, config.gpuLimit, enabled: config.gpuEnabled && !thermalOnly)
-        temp(.batteryTemperature, "Battery", snap.batteryTemperature, config.batteryTempLimit,
+        temp(.cpuTemperature, "CPU", signals.cpu.smoothed, config.cpuLimit, enabled: config.cpuEnabled && !thermalOnly)
+        temp(.gpuTemperature, "GPU", signals.gpu.smoothed, config.gpuLimit, enabled: config.gpuEnabled && !thermalOnly)
+        temp(.batteryTemperature, "Battery", signals.battery.smoothed, config.batteryTempLimit,
              enabled: config.batteryTempEnabled && !thermalOnly)
+
+        if let rise = signals.batteryRise {
+            let lim = config.batteryHeatingRise
+            out.append(RuleMargin(rule: .batteryHeating, fraction: (lim - rise) / lim, seconds: nil,
+                                  detail: "Battery up \(String(format: "%.1f", max(0, rise)))° in 5 min of \(fmt(lim))°"))
+        }
 
         if config.thermalEnabled {
             let lim = Double(config.thermalLimit.rank)
-            out.append(RuleMargin(rule: .thermalPressure, fraction: (lim - Double(snap.thermal.rank)) / lim, seconds: nil,
+            var seconds: TimeInterval?
+            var fraction = (lim - Double(snap.thermal.rank)) / lim
+            if let since = s.thermalSince, snap.thermal < .critical, config.thermalSustainSeconds > 0 {
+                let total = Double(config.thermalSustainSeconds)
+                let remaining = max(0, total - (m - since))
+                seconds = remaining
+                fraction = remaining / total * Forecast.warningFraction
+            }
+            out.append(RuleMargin(rule: .thermalPressure, fraction: fraction, seconds: seconds,
                                   detail: "Thermal \(snap.thermal.rawValue), limit \(config.thermalLimit.rawValue)"))
         }
 

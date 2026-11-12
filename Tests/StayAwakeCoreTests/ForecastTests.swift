@@ -100,7 +100,7 @@ final class ForecastTests: XCTestCase {
 
     func testWarningsListRulesWithinTenPercent() {
         var rig = Rig()
-        rig.snap.cpuTemperature = 83   // 7.8 percent below 90
+        rig.snap.cpuTemperature = 95   // 6.9 percent below 102
         rig.snap.batteryPercent = 80
         rig.arm()
         XCTAssertEqual(rig.last!.warnings, [.cpuTemperature])

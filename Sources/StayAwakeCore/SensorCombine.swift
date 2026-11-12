@@ -7,7 +7,7 @@ public enum SensorCombine {
     public static let plausible: ClosedRange<Double> = 1...130
 
     /// Above this gap between HID and the curated SMC keys the source line
-    /// says so. The hotter one still wins.
+    /// says so.
     public static let disagreement: Double = 15
 
     /// The hottest plausible reading, or nil when none is plausible.
@@ -15,12 +15,13 @@ public enum SensorCombine {
         readings.compactMap { $0 }.filter { plausible.contains($0) }.max()
     }
 
-    /// CPU temperature from two already reduced values. Fails toward hot.
-    public static func cpu(hid: Double?, smc: Double?) -> Double? { hottest([hid, smc]) }
-
-    /// GPU temperature from two already reduced values. The GPU rule never
-    /// decides sensor failure, so a nil here is fine.
-    public static func gpu(hid: Double?, smc: Double?) -> Double? { hottest([hid, smc]) }
+    /// Battery temperature: the hottest of IORegistry `Temperature`,
+    /// `VirtualTemperature` and the HID gas gauge. On an M2 Max the plain
+    /// `Temperature` reads 4 to 5 C below the other two, and macOS stops
+    /// charging at a gas gauge of about 44 C, so the max is the honest one.
+    public static func battery(temperature: Double?, virtual: Double?, hid: Double?) -> Double? {
+        hottest([temperature, virtual, hid])
+    }
 
     public enum Quantity: String, Sendable { case cpu, gpu }
 
@@ -29,50 +30,53 @@ public enum SensorCombine {
         q == .cpu ? SMCTemperatureKeys.cpu(family) : SMCTemperatureKeys.gpu(family)
     }
 
-    /// Picks the temperature for one quantity.
+    /// Picks the instant temperature for one quantity. The engine smooths it.
     ///
-    /// 1. The curated per-core keys of the chip family, max over the plausible ones.
-    /// 2. HID (`PMU tdie*` max on M2) as the cross-check: the higher of the two wins,
-    ///    so a stuck or lagging family never hides heat from the other.
-    /// 3. Chip unknown or none of its keys readable: HID alone. Only when HID has
-    ///    nothing either, the max over every key with the family prefixes. That
-    ///    reads high, which is the safe side when nothing better exists.
+    /// 1. The curated keys of the chip family that pass the gate: their mean.
+    ///    The max of single cores swings 30 C within seconds under normal
+    ///    work; the mean is the die temperature that matters for heat.
+    /// 2. None of those readable (unknown chip, or SMC skipped this sample):
+    ///    HID (`PMU tdie*` max). On a known chip the engine covers short SMC
+    ///    gaps with the last SMC value, so HID only takes over after a minute.
+    /// 3. HID silent too: the max over every key with the family prefixes.
+    ///    That reads high, which is the safe side when nothing better exists.
     ///
+    /// With both families readable, HID is only a cross-check in the source text.
     /// `useHID` / `useSMC` implement the "hid" and "smc" sensor modes.
     public static func choose(_ q: Quantity, hid: Double?, smc all: [SMCKey], family: ChipFamily,
                               useHID: Bool = true, useSMC: Bool = true) -> TemperatureChoice {
         let hidValue = useHID ? hid.flatMap { plausible.contains($0) ? $0 : nil } : nil
         let wanted = Set(curatedKeys(q, family: family))
         let ok = { (k: SMCKey) in SMCTemperatureKeys.plausible.contains(k.celsius) }
-        var used: [SMCKey] = []
-        var label = ""
+        func f(_ v: Double) -> String { String(format: "%.1f", v) }
+        let crossCheck = { (smc: Double) -> String in
+            guard let h = hidValue else { return "" }
+            let gap = abs(h - smc)
+            return ", hid \(f(h)) cross-check" + (gap > disagreement ? ", disagree by \(f(gap)) C" : "")
+        }
+
         if useSMC {
             let curated = all.filter { wanted.contains($0.key) && ok($0) }
-            if !curated.isEmpty {
-                used = curated
-                label = "\(family.rawValue) keys"
-            } else if hidValue == nil {
-                let prefixes = q == .cpu ? SMCTemperatureKeys.fallbackCPUPrefixes : SMCTemperatureKeys.fallbackGPUPrefixes
-                used = all.filter { k in ok(k) && prefixes.contains { k.key.hasPrefix($0) } }
-                label = "all \(prefixes.joined(separator: "/")) keys, \(family == .unknown ? "unknown chip" : "no \(family.rawValue) key readable")"
+            if !curated.isEmpty, let top = curated.max(by: { $0.celsius < $1.celsius }) {
+                let mean = curated.map(\.celsius).reduce(0, +) / Double(curated.count)
+                let source = "smc mean \(f(mean)) of \(curated.count) \(family.rawValue) keys, max \(f(top.celsius)) \(top.key)" + crossCheck(mean)
+                return TemperatureChoice(value: mean, smc: mean, used: curated, source: source, kind: .smc, hid: hidValue)
             }
         }
-        let top = used.max { $0.celsius < $1.celsius }
-        let smcValue = top?.celsius
-        let value = hottest([hidValue, smcValue])
-
-        func f(_ v: Double) -> String { String(format: "%.1f", v) }
-        let smcText = top.map { "smc \(f($0.celsius)) \($0.key) (\(label), \(used.count))" }
-        let source: String
-        switch (hidValue, smcText) {
-        case (nil, nil): source = "none"
-        case let (h?, nil): source = "hid \(f(h))"
-        case let (nil, s?): source = s
-        case let (h?, s?):
-            let gap = abs(h - (smcValue ?? h))
-            source = "max(hid \(f(h)), \(s))" + (gap > disagreement ? ", disagree by \(f(gap)) C" : "")
+        if let h = hidValue {
+            let why = !useSMC ? "" : family == .unknown ? ", unknown chip" : ", no \(family.rawValue) key readable"
+            return TemperatureChoice(value: h, smc: nil, used: [], source: "hid \(f(h))\(why)", kind: .hid, hid: h)
         }
-        return TemperatureChoice(value: value, smc: smcValue, used: used, source: source)
+        if useSMC {
+            let prefixes = q == .cpu ? SMCTemperatureKeys.fallbackCPUPrefixes : SMCTemperatureKeys.fallbackGPUPrefixes
+            let used = all.filter { k in ok(k) && prefixes.contains { k.key.hasPrefix($0) } }
+            if let top = used.max(by: { $0.celsius < $1.celsius }) {
+                let label = "all \(prefixes.joined(separator: "/")) keys, \(family == .unknown ? "unknown chip" : "no \(family.rawValue) key readable")"
+                return TemperatureChoice(value: top.celsius, smc: top.celsius, used: used,
+                                         source: "smc max \(f(top.celsius)) \(top.key) (\(label), \(used.count))", kind: .fallback, hid: nil)
+            }
+        }
+        return .none
     }
 
     /// One row per SMC key for `--report`: key, value, and what it was used for.

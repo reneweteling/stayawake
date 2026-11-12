@@ -13,6 +13,8 @@ struct SensorReading {
     var cpu: TemperatureChoice
     var gpu: TemperatureChoice
     var batteryRaw: BatterySample?
+    /// HID gas gauge, the third battery signal.
+    var batteryHID: Double?
     var pmset: PmsetSettings?
 
     var cpuSource: String { cpu.source }
@@ -55,9 +57,11 @@ final class SensorHub: @unchecked Sendable {
         let classification = HIDSensorParser.classify(hidAll.compactMap { r in r.celsius.map { HIDSensor(name: r.name, celsius: $0) } })
 
         // Which keys count, and how HID and SMC are combined, is decided in
-        // core: SensorCombine.choose. HID tdie on the M2 Max lags (45 to 50 C
-        // while the per-core SMC keys go 58 to 71 C), so it is the cross-check,
-        // not the main source. The M2 Max has no HID GPU sensor.
+        // core: SensorCombine.choose. The mean of the curated SMC keys is the
+        // reading; HID tdie on the M2 Max lags 20 to 30 C behind it, so it is
+        // the cross-check and the unknown-chip path. The engine smooths the
+        // reading and covers a skipped SMC sample with the last SMC value.
+        // The M2 Max has no HID GPU sensor.
         var smcKeys: [SMCKey] = []
         if useSMC, let smc {
             smcKeys = scanSMC ? smc.scan(prefixes: SMCTemperatureKeys.scanPrefixes)
@@ -79,12 +83,15 @@ final class SensorHub: @unchecked Sendable {
         }
 
         let rawBattery = IORegistryReader.battery()
-        let battery = rawBattery?.temperature ?? classification.batteryTemperature
+        let battery = SensorCombine.battery(temperature: rawBattery?.temperature,
+                                            virtual: rawBattery?.virtualTemperature,
+                                            hid: classification.batteryTemperature)
         let power = PowerSourceReading.read()
         let wake = didWake
         didWake = false
 
-        let snap = Snapshot(cpuTemperature: cpu.value, gpuTemperature: gpu.value, batteryTemperature: battery,
+        let snap = Snapshot(cpuTemperature: cpu.value, gpuTemperature: gpu.value,
+                            cpuSource: cpu.kind, gpuSource: gpu.kind, batteryTemperature: battery,
                             thermal: thermalLevel(ProcessInfo.processInfo.thermalState),
                             batteryPercent: power.percent, powerSource: power.source, isCharging: power.isCharging,
                             lidClosed: IORegistryReader.lidClosed() ?? false,
@@ -92,6 +99,7 @@ final class SensorHub: @unchecked Sendable {
                             networkUsable: network.usable, didWake: wake)
         let pmset = ReadOnlyCommand.pmsetG().map(PmsetParser.parse)
         return SensorReading(snapshot: snap, hidAll: hidAll, classification: classification, family: family,
-                             smcKeys: smcKeys, cpu: cpu, gpu: gpu, batteryRaw: rawBattery, pmset: pmset)
+                             smcKeys: smcKeys, cpu: cpu, gpu: gpu, batteryRaw: rawBattery,
+                             batteryHID: classification.batteryTemperature, pmset: pmset)
     }
 }

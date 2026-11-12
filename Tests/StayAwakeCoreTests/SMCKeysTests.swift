@@ -49,11 +49,12 @@ final class SMCKeysTests: XCTestCase {
         XCTAssertEqual(oldMax, 64.36)
 
         let c = SensorCombine.choose(.cpu, hid: 45.74, smc: all, family: .m2)
-        XCTAssertEqual(c.smc, 58.29)
-        XCTAssertEqual(c.value, 58.29)
+        XCTAssertEqual(c.smc!, 56.3937, accuracy: 0.001, "mean of the curated keys")
+        XCTAssertEqual(c.value!, 56.3937, accuracy: 0.001)
+        XCTAssertEqual(c.kind, .smc)
         // The E cluster was power gated: its keys read the bare offsets and are skipped.
         XCTAssertEqual(c.used.map(\.key), ["Tp01", "Tp05", "Tp09", "Tp0D", "Tp0X", "Tp0b", "Tp0f", "Tp0j"])
-        XCTAssertTrue(c.source.hasPrefix("max(hid 45.7, smc 58.3 Tp01"))
+        XCTAssertTrue(c.source.hasPrefix("smc mean 56.4 of 8 m2 keys, max 58.3 Tp01, hid 45.7 cross-check"), c.source)
         XCTAssertFalse(c.source.contains("disagree"))
 
         // Tf06 reads 112 on an M2; it is not a CPU key here and must never count.
@@ -61,17 +62,18 @@ final class SMCKeysTests: XCTestCase {
 
         let g = SensorCombine.choose(.gpu, hid: nil, smc: all, family: .m2)
         XCTAssertEqual(g.used.map(\.key), ["Tg0f", "Tg0j"])
-        XCTAssertEqual(g.value, 56.38)
+        XCTAssertEqual(g.value!, 56.04, accuracy: 0.001)
     }
 
-    func testLoadM2MaxStillPicksTheCuratedMax() throws {
+    func testLoadM2MaxTakesTheMeanOfTheCuratedKeys() throws {
         let all = try fixture("smc-m2max-load.txt")
         let c = SensorCombine.choose(.cpu, hid: 49.56, smc: all, family: .m2)
-        XCTAssertEqual(c.value, 71.10)
+        XCTAssertEqual(c.value!, 68.9117, accuracy: 0.001)
         XCTAssertEqual(c.used.count, 12)
-        // HID tdie lags far behind under load; the gap is named, the hotter wins.
-        XCTAssertTrue(c.source.contains("disagree by 21.5 C"))
-        XCTAssertEqual(SensorCombine.choose(.gpu, hid: nil, smc: all, family: .m2).value, 66.44)
+        XCTAssertTrue(c.source.contains("max 71.1"), "the hottest core stays visible: \(c.source)")
+        // HID tdie lags far behind under load; the gap is named, SMC stays the reading.
+        XCTAssertTrue(c.source.contains("disagree by 19.4 C"), c.source)
+        XCTAssertEqual(SensorCombine.choose(.gpu, hid: nil, smc: all, family: .m2).value!, 65.725, accuracy: 0.001)
     }
 
     func testFullyGatedSampleFallsBackToHID() throws {
@@ -81,20 +83,25 @@ final class SMCKeysTests: XCTestCase {
         XCTAssertNil(c.smc)
         XCTAssertTrue(c.used.isEmpty)
         XCTAssertEqual(c.value, 45.74)
-        XCTAssertEqual(c.source, "hid 45.7")
+        XCTAssertEqual(c.kind, .hid, "the engine holds the last SMC value over this")
+        XCTAssertEqual(c.source, "hid 45.7, no m2 key readable")
     }
 
-    // MARK: Fail toward hot
+    // MARK: HID is the cross-check
 
-    func testHIDWinsWhenItIsHotter() throws {
+    func testHIDDoesNotOverrideSMCOnAKnownChip() throws {
         let all = try fixture("smc-m2max-idle.txt")
-        XCTAssertEqual(SensorCombine.choose(.cpu, hid: 95, smc: all, family: .m2).value, 95)
+        let c = SensorCombine.choose(.cpu, hid: 95, smc: all, family: .m2)
+        XCTAssertEqual(c.value!, 56.3937, accuracy: 0.001)
+        XCTAssertEqual(c.hid, 95)
+        XCTAssertTrue(c.source.contains("disagree"))
     }
 
     func testUnknownChipUsesHIDOnly() throws {
         let all = try fixture("smc-m2max-load.txt")
         let c = SensorCombine.choose(.cpu, hid: 49.56, smc: all, family: .unknown)
         XCTAssertEqual(c.value, 49.56)
+        XCTAssertEqual(c.kind, .hid)
         XCTAssertTrue(c.used.isEmpty)
     }
 
@@ -106,6 +113,7 @@ final class SMCKeysTests: XCTestCase {
         XCTAssertTrue(c.used.allSatisfy { $0.key.hasPrefix("Tp") || $0.key.hasPrefix("Te") })
         XCTAssertTrue(c.used.allSatisfy { SMCTemperatureKeys.plausible.contains($0.celsius) })
         XCTAssertTrue(c.source.contains("unknown chip"))
+        XCTAssertEqual(c.kind, .fallback)
     }
 
     func testKnownChipWithMissingKeysAndNoHIDFallsBackToo() {
@@ -118,13 +126,15 @@ final class SMCKeysTests: XCTestCase {
     func testSensorModes() throws {
         let all = try fixture("smc-m2max-idle.txt")
         XCTAssertEqual(SensorCombine.choose(.cpu, hid: 45.74, smc: all, family: .m2, useSMC: false).value, 45.74)
-        XCTAssertEqual(SensorCombine.choose(.cpu, hid: 99, smc: all, family: .m2, useHID: false).value, 58.29)
+        XCTAssertEqual(SensorCombine.choose(.cpu, hid: 99, smc: all, family: .m2, useHID: false).value!, 56.3937, accuracy: 0.001)
         XCTAssertEqual(SensorCombine.choose(.cpu, hid: nil, smc: [], family: .m2), .none)
     }
 
     func testImplausibleHIDIsDropped() throws {
         let all = try fixture("smc-m2max-idle.txt")
-        XCTAssertEqual(SensorCombine.choose(.cpu, hid: 400, smc: all, family: .m2).value, 58.29)
+        let c = SensorCombine.choose(.cpu, hid: 400, smc: all, family: .m2)
+        XCTAssertEqual(c.value!, 56.3937, accuracy: 0.001)
+        XCTAssertNil(c.hid)
     }
 
     // MARK: Report table

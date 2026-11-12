@@ -8,29 +8,54 @@ public enum AfterTrip: String, Codable, CaseIterable, Sendable {
     case stayOff, rearmOnWake
 }
 
+/// Allowed ranges of the settings that the Settings window shows with
+/// steppers. `Config.clamped()` and the UI both read them from here.
+public enum ConfigRange {
+    public static let cpuLimit: ClosedRange<Double> = 60...110
+    public static let gpuLimit: ClosedRange<Double> = 60...110
+    public static let batteryTempLimit: ClosedRange<Double> = 30...50
+    public static let sustainSeconds: ClosedRange<Int> = 0...300
+    public static let clearMargin: ClosedRange<Double> = 2...20
+    public static let batteryClearMargin: ClosedRange<Double> = 1...10
+    public static let thermalSustainSeconds: ClosedRange<Int> = 0...600
+    public static let batteryHeatingRise: ClosedRange<Double> = 0.5...10
+    public static let smoothingSeconds: ClosedRange<Int> = 0...300
+}
+
 /// Everything the core needs to know about the user's settings, as a plain
 /// value. The app maps `UserDefaults` onto this; the core never sees defaults.
 /// Temperatures are always Celsius here. `clamped()` pulls every field into
-/// the range from the spec.
+/// the range from the spec. The defaults are the Balanced preset.
 public struct Config: Codable, Equatable, Sendable {
-    // CPU temperature
+    /// Bumped when stored settings need more than "missing keys take their
+    /// default". See `decodeLenient`.
+    public static let currentVersion = 2
+    public var configVersion = Config.currentVersion
+    // CPU temperature, compared as the rolling average of the curated SMC keys
     public var cpuEnabled = true
-    public var cpuLimit: Double = 90
-    public var cpuSustainSeconds = 20
+    public var cpuLimit: Double = 102
+    public var cpuSustainSeconds = 120
     public var cpuClearMargin: Double = 10
+    /// Width of the rolling average for CPU and GPU. 0 compares each sample as it is.
+    public var smoothingSeconds = 60
     // GPU temperature, same shape as CPU
     public var gpuEnabled = true
-    public var gpuLimit: Double = 85
-    public var gpuSustainSeconds = 20
+    public var gpuLimit: Double = 100
+    public var gpuSustainSeconds = 120
     public var gpuClearMargin: Double = 10
-    // Battery temperature
+    // Battery temperature, the hottest battery sensor. The main bag-safety rule.
     public var batteryTempEnabled = true
-    public var batteryTempLimit: Double = 40
-    public var batteryTempSustainSeconds = 30
-    public var batteryTempClearMargin: Double = 4
-    // Thermal pressure
+    public var batteryTempLimit: Double = 43
+    public var batteryTempSustainSeconds = 60
+    public var batteryTempClearMargin: Double = 3
+    // Battery heating up: lid closed on battery, rise inside a 5 minute window
+    public var batteryHeatingEnabled = false
+    public var batteryHeatingRise: Double = 2
+    // Thermal pressure. Critical always trips at once; lower levels at or
+    // above the limit trip after `thermalSustainSeconds`.
     public var thermalEnabled = true
     public var thermalLimit: ThermalLevel = .serious
+    public var thermalSustainSeconds = 300
     // Battery floor
     public var floorEnabled = true
     public var floorPercent = 20
@@ -79,20 +104,28 @@ public struct Config: Codable, Equatable, Sendable {
 
     /// The fixed 5 minute window after which an unchanging reading counts as stuck.
     public static let stuckReadingSeconds: TimeInterval = 300
+    /// The window of the battery heating-up rule.
+    public static let batteryHeatingWindowSeconds: TimeInterval = 300
 
     public func clamped() -> Config {
         var c = self
         func clamp<T: Comparable>(_ v: T, _ lo: T, _ hi: T) -> T { min(max(v, lo), hi) }
-        c.cpuLimit = clamp(c.cpuLimit, 60, 100)
-        c.cpuSustainSeconds = clamp(c.cpuSustainSeconds, 0, 120)
-        c.cpuClearMargin = clamp(c.cpuClearMargin, 2, 20)
-        c.gpuLimit = clamp(c.gpuLimit, 60, 100)
-        c.gpuSustainSeconds = clamp(c.gpuSustainSeconds, 0, 120)
-        c.gpuClearMargin = clamp(c.gpuClearMargin, 2, 20)
-        c.batteryTempLimit = clamp(c.batteryTempLimit, 30, 50)
-        c.batteryTempSustainSeconds = clamp(c.batteryTempSustainSeconds, 0, 120)
-        c.batteryTempClearMargin = clamp(c.batteryTempClearMargin, 1, 10)
+        func clamp<T: Comparable>(_ v: T, _ r: ClosedRange<T>) -> T { min(max(v, r.lowerBound), r.upperBound) }
+        typealias R = ConfigRange
+        c.configVersion = Config.currentVersion
+        c.cpuLimit = clamp(c.cpuLimit, R.cpuLimit)
+        c.cpuSustainSeconds = clamp(c.cpuSustainSeconds, R.sustainSeconds)
+        c.cpuClearMargin = clamp(c.cpuClearMargin, R.clearMargin)
+        c.gpuLimit = clamp(c.gpuLimit, R.gpuLimit)
+        c.gpuSustainSeconds = clamp(c.gpuSustainSeconds, R.sustainSeconds)
+        c.gpuClearMargin = clamp(c.gpuClearMargin, R.clearMargin)
+        c.batteryTempLimit = clamp(c.batteryTempLimit, R.batteryTempLimit)
+        c.batteryTempSustainSeconds = clamp(c.batteryTempSustainSeconds, R.sustainSeconds)
+        c.batteryTempClearMargin = clamp(c.batteryTempClearMargin, R.batteryClearMargin)
+        c.batteryHeatingRise = clamp(c.batteryHeatingRise, R.batteryHeatingRise)
         if c.thermalLimit == .nominal { c.thermalLimit = .fair }
+        c.thermalSustainSeconds = clamp(c.thermalSustainSeconds, R.thermalSustainSeconds)
+        c.smoothingSeconds = clamp(c.smoothingSeconds, R.smoothingSeconds)
         c.floorPercent = clamp(c.floorPercent, 5, 60)
         c.lidMinutes = clamp(c.lidMinutes, 10, 480)
         c.idleCpuPercent = clamp(c.idleCpuPercent, 2, 50)
@@ -120,11 +153,40 @@ public struct Config: Codable, Equatable, Sendable {
         guard var stored = try JSONSerialization.jsonObject(with: data) as? [String: Any] else {
             throw DecodingError.dataCorrupted(.init(codingPath: [], debugDescription: "Config must be a JSON object"))
         }
+        stored = migrate(stored)
         let defaults = try JSONSerialization.jsonObject(with: JSONEncoder().encode(Config())) as! [String: Any]
         let known = Set(defaults.keys)
         stored = stored.filter { known.contains($0.key) }
         let merged = defaults.merging(stored) { _, new in new }
         let config = try JSONDecoder().decode(Config.self, from: JSONSerialization.data(withJSONObject: merged))
         return config.clamped()
+    }
+
+    /// Version 1 compared the instant max of the CPU keys against 90 C for
+    /// 20 s, which trips during normal work on an M2 Max. Version 2 compares
+    /// a 60 s average against the Balanced limits. A rule the user never
+    /// touched (still at the version 1 default; a missing key counts as the
+    /// default) moves to the new defaults. Edited values stay as they are.
+    static func migrate(_ input: [String: Any]) -> [String: Any] {
+        var stored = input
+        let version = (stored["configVersion"] as? NSNumber)?.intValue ?? 1
+        guard version < 2 else { return stored }
+        func number(_ key: String, default d: Double) -> Double { (stored[key] as? NSNumber)?.doubleValue ?? d }
+        // Untouched: drop the keys so the new defaults apply. Edited: write
+        // the missing ones as their version 1 default, so a stored limit
+        // keeps the wait it was used with.
+        func reset(_ keys: [String], ifAt old: [Double]) {
+            if zip(keys, old).allSatisfy({ number($0.0, default: $0.1) == $0.1 }) {
+                keys.forEach { stored.removeValue(forKey: $0) }
+            } else {
+                for (k, v) in zip(keys, old) where stored[k] == nil { stored[k] = v }
+            }
+        }
+        reset(["cpuLimit", "cpuSustainSeconds"], ifAt: [90, 20])
+        reset(["gpuLimit", "gpuSustainSeconds"], ifAt: [85, 20])
+        reset(["batteryTempLimit", "batteryTempSustainSeconds"], ifAt: [40, 30])
+        reset(["batteryTempClearMargin"], ifAt: [4])
+        stored["configVersion"] = Config.currentVersion
+        return stored
     }
 }

@@ -5,9 +5,9 @@ final class DisplayTests: XCTestCase {
     func testReadoutsShowTheirLimits() {
         let c = Config()
         let s = Snapshot(cpuTemperature: 58, gpuTemperature: 52, batteryTemperature: 34, batteryPercent: 71)
-        XCTAssertEqual(Readout.cpu(s, c), "CPU 58 °C / 90")
-        XCTAssertEqual(Readout.gpu(s, c), "GPU 52 °C / 85")
-        XCTAssertEqual(Readout.batteryTemperature(s, c), "Battery 34 °C / 40")
+        XCTAssertEqual(Readout.cpu(s, c), "CPU 58 °C / 102")
+        XCTAssertEqual(Readout.gpu(s, c), "GPU 52 °C / 100")
+        XCTAssertEqual(Readout.batteryTemperature(s, c), "Battery 34 °C / 43")
         XCTAssertEqual(Readout.batteryLevel(s, c), "Battery 71% / stops at 20%")
     }
 
@@ -22,8 +22,22 @@ final class DisplayTests: XCTestCase {
 
     func testMissingReadingsAreShownAsNA() {
         let s = Snapshot(cpuTemperature: nil, gpuTemperature: nil, batteryPercent: nil)
-        XCTAssertEqual(Readout.cpu(s, Config()), "CPU n/a / 90")
+        XCTAssertEqual(Readout.cpu(s, Config()), "CPU n/a / 102")
         XCTAssertEqual(Readout.batteryLevel(s, Config()), "Battery n/a / stops at 20%")
+    }
+
+    func testReadoutsShowTheAverageTheRuleUses() {
+        let c = Config()
+        let s = Snapshot(cpuTemperature: 100, gpuTemperature: 70)
+        let sig = Signals(cpu: SignalReading(instant: 100, smoothed: 88.4, source: .smc, samples: 4),
+                          gpu: SignalReading(instant: 70, smoothed: 70, source: .smc, samples: 4),
+                          battery: SignalReading(instant: 35, smoothed: 35, source: .smc, samples: 1))
+        XCTAssertEqual(Readout.cpu(s, c, signals: sig), "CPU 88 °C / 102")
+        XCTAssertEqual(Readout.cpu(s, c), "CPU 100 °C / 102", "before the first decision: the instant value")
+        XCTAssertEqual(Readout.instantNote(sig.cpu, unit: .celsius), "now 100")
+        XCTAssertNil(Readout.instantNote(sig.gpu, unit: .celsius), "no note when they agree")
+        let empty = Signals(cpu: SignalReading(instant: nil, smoothed: nil, source: .none, samples: 0), gpu: .none, battery: .none)
+        XCTAssertEqual(Readout.cpu(s, c, signals: empty), "CPU 100 °C / 102", "no samples yet: the instant value")
     }
 
     func testValueSplitsOffTheLabel() {
@@ -50,7 +64,7 @@ final class DisplayTests: XCTestCase {
             RuleMargin(rule: .lidOnBattery, fraction: 0.5, seconds: 42 * 60, detail: "Lid"),
             RuleMargin(rule: .cpuTemperature, fraction: 0.3, seconds: nil, detail: "CPU"),
         ]
-        XCTAssertEqual(Readout.limitingTime(margins, timerLeft: nil)?.label, "lid limit")
+        XCTAssertEqual(Readout.limitingTime(margins, timerLeft: nil)?.label, "lid closed")
         XCTAssertEqual(Readout.limitingTime(margins, timerLeft: 600)?.label, "timer")
         XCTAssertNil(Readout.limitingTime([], timerLeft: nil))
     }
@@ -119,16 +133,16 @@ final class MenuBarStatusTests: XCTestCase {
     }
 
     func testTrippedShowsTheShortReasonUntilAcknowledged() {
-        var rig = Rig { $0.cpuSustainSeconds = 20 }
+        var rig = Rig { $0.cpuSustainSeconds = 20; $0.smoothingSeconds = 0 }
         rig.snap.cpuTemperature = 70
         rig.arm()
-        rig.snap.cpuTemperature = 95
+        rig.snap.cpuTemperature = 105
         rig.advance(45)
         XCTAssertEqual(rig.state.phase, .tripped)
         let s = MenuBarStatus.make(input(rig))
         XCTAssertEqual(s.kind, .tripped)
         XCTAssertEqual(s.symbol, "exclamationmark.triangle.fill")
-        XCTAssertTrue(s.title.hasPrefix("HOT 95"), s.title)
+        XCTAssertTrue(s.title.hasPrefix("HOT 105"), s.title)
         XCTAssertEqual(s.tone, .red)
         XCTAssertTrue(s.tooltip.hasPrefix("Sleep restored at "), s.tooltip)
         XCTAssertTrue(s.tooltip.contains("CPU temperature"), s.tooltip)
@@ -137,9 +151,9 @@ final class MenuBarStatusTests: XCTestCase {
     }
 
     func testGPUTripReason() {
-        var rig = Rig { $0.gpuSustainSeconds = 0 }
+        var rig = Rig { $0.gpuSustainSeconds = 0; $0.smoothingSeconds = 0 }
         rig.arm()
-        rig.snap.gpuTemperature = 85
+        rig.snap.gpuTemperature = 100
         rig.advance(15)
         XCTAssertEqual(rig.state.lastTrip?.shortReason, "GPU HOT")
         XCTAssertEqual(MenuBarStatus.make(input(rig)).title, "GPU HOT")

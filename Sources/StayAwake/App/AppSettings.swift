@@ -37,6 +37,11 @@ final class AppSettings: ObservableObject {
         ])
         if let data = defaults.data(forKey: "config"), let stored = try? Config.decodeLenient(from: data) {
             config = stored
+            // decodeLenient migrates older versions; store the result so the
+            // migration runs once.
+            if let migrated = try? JSONEncoder().encode(stored), migrated != data {
+                defaults.set(migrated, forKey: "config")
+            }
         } else {
             config = Config()
         }

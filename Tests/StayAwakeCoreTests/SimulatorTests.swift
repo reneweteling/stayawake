@@ -9,17 +9,17 @@ final class SimulatorTests: XCTestCase {
     func testScenarioArmsHoldsAndTrips() throws {
         let r = try run("""
         { "start": "2026-11-09T09:00:00Z", "timeZone": "Europe/Amsterdam",
-          "config": { "cpuSustainSeconds": 0, "schedule": { "enabled": false, "days": [[],[],[],[],[],[],[]] } },
+          "config": { "cpuSustainSeconds": 0, "smoothingSeconds": 0, "schedule": { "enabled": false, "days": [[],[],[],[],[],[],[]] } },
           "steps": [
             { "at": 0, "command": "arm" },
             { "at": 15, "snapshot": { "cpuTemperature": 50.5 } },
-            { "at": 30, "snapshot": { "cpuTemperature": 95 } }
+            { "at": 30, "snapshot": { "cpuTemperature": 105 } }
           ] }
         """)
         XCTAssertEqual(r.map(\.decision.phase), [.holding, .holding, .tripped])
         XCTAssertEqual(r[0].armOutcome, .holding)
         XCTAssertEqual(r[2].decision.trip?.rule, .cpuTemperature)
-        XCTAssertTrue(r[2].line.contains("TRIP HOT 95°"))
+        XCTAssertTrue(r[2].line.contains("TRIP HOT 105°"))
     }
 
     func testSnapshotPatchesCarryForwardAndMissingClearsReadings() throws {

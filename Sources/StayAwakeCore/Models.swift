@@ -23,7 +23,7 @@ public enum ThermalLevel: String, Codable, Comparable, CaseIterable, Sendable {
 /// several rules trip at once: heat and battery first, then the guards, then
 /// the "nothing is happening" rules.
 public enum RuleID: String, Codable, CaseIterable, Sendable {
-    case cpuTemperature, gpuTemperature, batteryTemperature, thermalPressure, batteryFloor
+    case cpuTemperature, gpuTemperature, batteryTemperature, batteryHeating, thermalPressure, batteryFloor
     case sensorFailure, hardCap, schedule, lidOnBattery, noNetwork, idle, watchedProcess
 
     public var priority: Int { RuleID.allCases.firstIndex(of: self)! }
@@ -33,6 +33,7 @@ public enum RuleID: String, Codable, CaseIterable, Sendable {
         case .cpuTemperature: return "CPU temperature"
         case .gpuTemperature: return "GPU temperature"
         case .batteryTemperature: return "Battery temperature"
+        case .batteryHeating: return "Battery heating up"
         case .thermalPressure: return "Thermal pressure"
         case .batteryFloor: return "Battery level"
         case .sensorFailure: return "Temperature sensors"
@@ -52,6 +53,7 @@ public enum RuleID: String, Codable, CaseIterable, Sendable {
         case .cpuTemperature: return "HOT \(n(value))°"
         case .gpuTemperature: return "GPU HOT"
         case .batteryTemperature: return "BATT HOT \(n(value))°"
+        case .batteryHeating: return "BATT RISING"
         case .thermalPressure: return "THERMAL"
         case .batteryFloor: return "LOW \(n(value))%"
         case .sensorFailure: return "SENSOR"
@@ -65,10 +67,27 @@ public enum RuleID: String, Codable, CaseIterable, Sendable {
     }
 }
 
+/// Where a CPU or GPU reading came from.
+public enum TemperatureSource: String, Codable, Sendable {
+    /// Mean of the curated SMC keys of a known chip.
+    case smc
+    /// HID die sensors: the unknown-chip path, or SMC gave nothing this sample.
+    case hid
+    /// Max over every SMC key with the family prefixes, last resort.
+    case fallback
+    /// The engine repeated the last SMC value because SMC skipped this sample.
+    case held
+    case none
+}
+
 /// What the sensors said at one moment. Built by the app, never by the core.
 public struct Snapshot: Codable, Equatable, Sendable {
+    /// Instant CPU reading, see `SensorCombine.choose`. The engine smooths it.
     public var cpuTemperature: Double?
     public var gpuTemperature: Double?
+    public var cpuSource: TemperatureSource
+    public var gpuSource: TemperatureSource
+    /// Hottest of the battery sensors, see `SensorCombine.battery`.
     public var batteryTemperature: Double?
     public var thermal: ThermalLevel
     public var batteryPercent: Int?
@@ -82,13 +101,17 @@ public struct Snapshot: Codable, Equatable, Sendable {
     /// True when the app saw a wake notification since the last snapshot.
     public var didWake: Bool
 
-    public init(cpuTemperature: Double? = 50, gpuTemperature: Double? = 45, batteryTemperature: Double? = 30,
+    public init(cpuTemperature: Double? = 50, gpuTemperature: Double? = 45,
+                cpuSource: TemperatureSource = .smc, gpuSource: TemperatureSource = .smc,
+                batteryTemperature: Double? = 30,
                 thermal: ThermalLevel = .nominal, batteryPercent: Int? = 80,
                 powerSource: PowerSource = .battery, isCharging: Bool = false, lidClosed: Bool = false,
                 cpuLoadPercent: Double? = 40, watchedProcessRunning: Bool? = true,
                 networkUsable: Bool = true, didWake: Bool = false) {
         self.cpuTemperature = cpuTemperature
         self.gpuTemperature = gpuTemperature
+        self.cpuSource = cpuSource
+        self.gpuSource = gpuSource
         self.batteryTemperature = batteryTemperature
         self.thermal = thermal
         self.batteryPercent = batteryPercent
@@ -204,6 +227,8 @@ public struct Decision: Equatable, Sendable {
     public var timeLeft: TimeInterval?
     public var scheduleOpen: Bool
     public var nextScheduleOpen: Date?
+    /// The values the temperature rules actually compared, with the instant ones next to them.
+    public var signals: Signals = .empty
 
     public var wantsAwake: Bool { phase == .holding }
 }
