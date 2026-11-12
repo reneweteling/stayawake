@@ -3,7 +3,7 @@
 // Same rows, same labels, same default limits. A short script plays one real run:
 // holding on battery in a bag, the battery warms up, the 43 °C rule stops it.
 ---
-<div class="pv" data-pv role="img" aria-label="The StayAwake popover while it keeps a closed MacBook awake on battery: CPU temperature 61 °C of 102, battery temperature 34 °C of 43, battery charge 71% with a stop at 20%, first to stop it: lid on battery, 42 minutes left.">
+<div class="pv" data-pv role="img" aria-label="The StayAwake popover while it keeps a closed MacBook awake on battery: CPU temperature 61 °C of 100, battery temperature 34 °C of 43, battery charge 71% with a stop at 20%, first to stop it: lid on battery, 42 minutes left.">
   <div class="mbar" aria-hidden="true">
     <span class="item" data-item>
       <svg class="cup" viewBox="0 0 16 16" width="15" height="15"><path d="M2.5 5h8.5v4.2a3.8 3.8 0 0 1-3.8 3.8H6.3a3.8 3.8 0 0 1-3.8-3.8V5Z" fill="currentColor" /><path d="M11 6.4h.9a1.8 1.8 0 0 1 0 3.6H11" fill="none" stroke="currentColor" stroke-width="1.4" /><rect x="1.5" y="13.6" width="11" height="1.2" rx=".6" fill="currentColor" /></svg>
@@ -29,8 +29,8 @@
 
     <hr />
     <div class="rows">
-      <div class="r"><span>CPU temperature</span><span data-cpu>61 °C / 102</span></div>
-      <div class="r"><span>GPU temperature</span><span data-gpu>48 °C / 100</span></div>
+      <div class="r"><span>CPU temperature</span><span data-cpu>61 °C / 100</span></div>
+      <div class="r"><span>GPU temperature</span><span data-gpu>48 °C / 95</span></div>
       <div class="r"><span>Battery temperature</span><span data-bt>34 °C / 43</span></div>
       <div class="r"><span>Battery charge</span><span data-bc>71% / stops at 20%</span></div>
       <div class="bar"><i data-bar style="width:71%"></i></div>
@@ -121,8 +121,8 @@
       const warn = bt >= 41;
       el.title.textContent = `${cpu}° ${pct}%`;
       el.sub.textContent = `Awake for ${dur(held)} · ${dur(left)} left (lid closed)`;
-      el.cpu.textContent = `${cpu} °C / 102`;
-      el.gpu.textContent = `${Math.round(cpu * 0.78)} °C / 100`;
+      el.cpu.textContent = `${cpu} °C / 100`;
+      el.gpu.textContent = `${Math.round(cpu * 0.78)} °C / 95`;
       el.bt.textContent = `${bt} °C / 43`;
       el.bc.textContent = `${pct}% / stops at 20%`;
       el.bar.style.width = `${pct}%`;

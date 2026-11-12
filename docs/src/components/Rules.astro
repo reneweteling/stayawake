@@ -3,8 +3,8 @@ type Rule = [string, string];
 const groups: [string, Rule[]][] = [
   ['Heat', [
     ['Battery temperature', 'Hottest battery sensor at 43 °C for 60 s. This is the one that matters in a bag.'],
-    ['CPU', '60 s average at 102 °C for 2 min. Clears 10 °C lower.'],
-    ['GPU', '60 s average at 100 °C for 2 min.'],
+    ['CPU', '60 s average at 100 °C for 2 min. Clears 10 °C lower.'],
+    ['GPU', '60 s average at 95 °C for 2 min.'],
     ['Thermal pressure', 'macOS reports serious for 5 min, or critical once.'],
     ['Battery heating up', 'Up 2 °C in 5 min with the lid closed on battery. Off by default.'],
   ]],
