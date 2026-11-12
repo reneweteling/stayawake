@@ -1,6 +1,7 @@
 ---
 import '../styles/global.css';
 import Hero from '../components/Hero.astro';
+import OnTheGo from '../components/OnTheGo.astro';
 import Stats from '../components/Stats.astro';
 import Cleans from '../components/Cleans.astro';
 import Decides from '../components/Decides.astro';
@@ -13,11 +14,11 @@ import Motion from '../components/Motion.astro';
 import { faq } from '../data/faq';
 
 const base = import.meta.env.BASE_URL.replace(/\/?$/, '/');
-const title = 'StayAwake: keep a closed MacBook awake on battery, and stop in time';
-const description = 'Free macOS menu bar app that keeps a closed MacBook awake on battery. A root helper with a lease restores sleep on a crash, a quit or a reboot, and safety rules release it before heat, a low battery or the clock make it a bad idea.';
+const title = 'StayAwake: keep AI agents working while your MacBook is in your bag';
+const description = 'Run Claude Code, Codex and other AI agents on the go. StayAwake is a free macOS menu bar app that keeps a closed MacBook awake on battery while you steer from your phone, and stops safely on heat, a low battery, a dropped network or your schedule.';
 const site = 'https://reneweteling.github.io/stayawake/';
 const ogImage = `${site}assets/og.png`;
-const ogAlt = 'StayAwake: stay awake, then stop. Menu bar app for a closed MacBook.';
+const ogAlt = 'StayAwake: AI agents keep working while your laptop is in your bag.';
 const download = 'https://github.com/reneweteling/stayawake/releases/latest/download/StayAwake.dmg';
 
 const person = {
@@ -54,6 +55,7 @@ const jsonLd = {
       isAccessibleForFree: true,
       offers: { '@type': 'Offer', price: '0', priceCurrency: 'EUR' },
       featureList: [
+        'Keeps AI coding agents running while your closed MacBook is in your bag',
         'One click keeps a closed MacBook awake on battery',
         'Root helper with a lease: sleep returns after a crash, a quit or a reboot',
         'Releases on CPU, GPU or battery heat, thermal pressure and a low battery',
@@ -89,7 +91,7 @@ const jsonLd = {
     <meta property="og:site_name" content="StayAwake" />
     <meta property="og:locale" content="en_US" />
     <meta property="og:url" content={site} />
-    <meta property="og:title" content="StayAwake: stay awake. Then stop." />
+    <meta property="og:title" content="StayAwake: AI agents on the go, laptop in your bag" />
     <meta property="og:description" content={description} />
     <meta property="og:image" content={ogImage} />
     <meta property="og:image:secure_url" content={ogImage} />
@@ -99,7 +101,7 @@ const jsonLd = {
     <meta property="og:image:alt" content={ogAlt} />
 
     <meta name="twitter:card" content="summary_large_image" />
-    <meta name="twitter:title" content="StayAwake: stay awake. Then stop." />
+    <meta name="twitter:title" content="StayAwake: AI agents on the go, laptop in your bag" />
     <meta name="twitter:description" content={description} />
     <meta name="twitter:image" content={ogImage} />
     <meta name="twitter:image:alt" content={ogAlt} />
@@ -119,6 +121,7 @@ const jsonLd = {
   </head>
   <body>
     <Hero />
+    <OnTheGo />
     <Stats />
     <Cleans />
     <Features />

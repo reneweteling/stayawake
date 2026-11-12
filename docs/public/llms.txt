@@ -1,6 +1,11 @@
 # StayAwake
 
-> StayAwake is a free macOS menu bar app (macOS 14+, Apple Silicon) that keeps a closed MacBook awake on battery and switches itself off before heat, a low battery or the clock make that a bad idea. Made by René Weteling (https://www.weteling.com).
+> StayAwake is a free macOS menu bar app (macOS 14+, Apple Silicon) that keeps a closed MacBook awake on battery so AI coding agents (Claude Code, Codex and similar) keep working while the laptop is in your bag and you steer from your phone, and switches itself off before heat, a low battery or the clock make that a bad idea. Made by René Weteling (https://www.weteling.com).
+
+## AI on the go
+
+- Start your agents, arm StayAwake, connect from your phone with your agent tool's remote or mobile option (phone hotspot for the network), close the lid and put the Mac in your bag
+- The agents keep running on battery. StayAwake stops safely on heat, a low battery, a dropped network or the schedule
 
 ## What it does
 
