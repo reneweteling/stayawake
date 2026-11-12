@@ -29,7 +29,7 @@ Status: early development. The core engine and the app shell exist, the switch i
 |---|---|
 | CPU temperature | 100 °C (60 s average) for 120 s, clears 10 °C lower |
 | GPU temperature | 95 °C (60 s average) for 120 s, clears 10 °C lower. A missing GPU sensor never trips the sensor failure rule |
-| Battery temperature | 40 °C for 30 s, clears 4 °C lower |
+| Battery temperature | 43 °C for 60 s (hottest gauge reading), clears 3 °C lower |
 | Thermal pressure | serious or critical |
 | Battery floor | below 20% and not charging, clears at 30% or when charging |
 | Schedule | Mon to Fri 07:00 to 20:00, up to 3 windows per day |
