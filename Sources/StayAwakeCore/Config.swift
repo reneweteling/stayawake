@@ -104,7 +104,8 @@ public struct Config: Codable, Equatable, Sendable {
 
     public init() {}
 
-    /// The fixed 5 minute window after which an unchanging reading counts as stuck.
+    /// The fixed 5 minute window after which an unchanging CPU or GPU reading counts
+    /// as stuck. Battery temperature is exempt, see `RuleEngine.sensor`.
     public static let stuckReadingSeconds: TimeInterval = 300
     /// The window of the battery heating-up rule.
     public static let batteryHeatingWindowSeconds: TimeInterval = 300

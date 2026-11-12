@@ -290,6 +290,84 @@ final class RuleEngineTests: XCTestCase {
         XCTAssertGreaterThanOrEqual(Double(tripIndex! + 1) * 15, 360)
     }
 
+    /// Display asleep on power: CPU wobbles, the battery sits on one value
+    /// for half an hour. That is a healthy sensor, not a stuck one.
+    func testFlatBatteryTemperatureDoesNotTripSensorFailure() {
+        var rig = Rig()
+        rig.snap.cpuTemperature = 55
+        rig.snap.batteryTemperature = 33.4
+        rig.arm()
+        for n in 0..<120 {
+            rig.now = rig.now.advanced(by: 15)
+            rig.snap.cpuTemperature = 50 + Double(n % 7)
+            rig.snap.gpuTemperature = 60 + Double(n % 5)
+            let d = rig.eval()
+            XCTAssertEqual(d.phase, .holding, "eval \(n)")
+            XCTAssertFalse(d.rules.contains(.sensorFailure), "eval \(n)")
+        }
+    }
+
+    func testMissingBatteryTemperatureStillTripsSensorFailure() {
+        var rig = Rig()
+        rig.arm()
+        rig.snap.batteryTemperature = nil
+        let ds = rig.advance(90, step: 15)
+        XCTAssertEqual(ds.compactMap(\.trip).first?.rule, .sensorFailure)
+    }
+
+    /// The loop did not run for minutes (display sleep, App Nap) but every
+    /// read that did happen was valid: the gap alone must not trip.
+    func testSampleGapWithValidReadsDoesNotTrip() {
+        var rig = Rig()
+        rig.arm()
+        rig.advance(60)
+        rig.sleep(600)
+        let ds = rig.advance(120)
+        XCTAssertTrue(ds.allSatisfy { $0.phase == .holding })
+        XCTAssertFalse(ds.contains { $0.rules.contains(.sensorFailure) })
+    }
+
+    /// A failed read before a gap and one after it are not 60 s of failure:
+    /// the clock starts again after the gap.
+    func testFailedReadAcrossGapRestartsSensorFailureClock() {
+        var rig = Rig()
+        rig.arm()
+        rig.snap.cpuTemperature = nil
+        rig.advance(30)
+        rig.sleep(600)
+        XCTAssertEqual(rig.eval().phase, .holding)
+        rig.advance(45)
+        XCTAssertEqual(rig.last?.phase, .holding)
+        XCTAssertEqual(rig.advance(30).compactMap(\.trip).first?.rule, .sensorFailure)
+    }
+
+    func testConsecutiveFailedReadsForSixtySecondsTrip() {
+        var rig = Rig()
+        rig.arm()
+        rig.snap.cpuTemperature = nil
+        // First failed read at +15 s, the fifth (+75 s) is 60 s after it.
+        let ds = rig.advance(75, step: 15)
+        XCTAssertEqual(ds.dropLast().filter { $0.phase == .tripped }.count, 0)
+        XCTAssertEqual(ds.last?.trip?.rule, .sensorFailure)
+    }
+
+    /// After a sensor-failure trip on a flat battery reading, turning on
+    /// again must work while the battery still reads the same value.
+    func testRearmWithUnchangedBatteryTemperature() {
+        var rig = Rig()
+        rig.snap.cpuTemperature = 55
+        rig.snap.batteryTemperature = 33.4
+        rig.arm()
+        for n in 0..<40 {
+            rig.now = rig.now.advanced(by: 15)
+            rig.snap.cpuTemperature = 50 + Double(n % 7)
+            rig.eval()
+        }
+        rig.state = RuleEngine.disarm(rig.state).state
+        let r = rig.arm()
+        XCTAssertEqual(r.outcome, .holding)
+    }
+
     func testReadingReturningClearsSensorFailure() {
         var rig = Rig()
         rig.arm()

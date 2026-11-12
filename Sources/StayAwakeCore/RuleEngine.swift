@@ -136,13 +136,19 @@ public enum RuleEngine {
     /// Validity and stuck detection look at that reading; the limit and the
     /// clears-at level are compared with the rolling mean over `smooth`
     /// seconds when it is given, with the reading itself otherwise.
+    ///
+    /// `stuckCheck` is off for the battery: it reports in 0.1 °C steps and
+    /// sits on one value for many minutes when the Mac idles on power with
+    /// the display asleep. Counting that as stuck tripped the sensor-failure
+    /// rule on healthy readings. A missing or implausible battery reading
+    /// still counts as invalid.
     private static func sensor(_ value: Double?, smooth: TimeInterval?, samples: inout [TimedValue], tracker: inout SensorTracker,
-                               enabled: Bool, limit: Double, sustain: Int, clearMargin: Double, rule: RuleID,
+                               stuckCheck: Bool = true, enabled: Bool, limit: Double, sustain: Int, clearMargin: Double, rule: RuleID,
                                latched: inout Set<RuleID>, now: TimeInterval, instant: Bool) -> SensorResult {
         var valid = false
         if let v = value, v >= 0, v <= 130 {
             if tracker.lastValue == v {
-                let stuck = now - (tracker.lastChange ?? now) >= Config.stuckReadingSeconds
+                let stuck = stuckCheck && now - (tracker.lastChange ?? now) >= Config.stuckReadingSeconds
                 valid = !stuck
             } else {
                 tracker.lastValue = v
@@ -252,7 +258,8 @@ public enum RuleEngine {
                 shortReason: RuleID.gpuTemperature.shortReason(value: v, config: config)))
         }
         var unsmoothed: [TimedValue] = []
-        let bat = sensor(thermalOnly ? nil : snap.batteryTemperature, smooth: nil, samples: &unsmoothed, tracker: &s.batteryTemp, enabled: config.batteryTempEnabled && !thermalOnly,
+        let bat = sensor(thermalOnly ? nil : snap.batteryTemperature, smooth: nil, samples: &unsmoothed, tracker: &s.batteryTemp,
+                         stuckCheck: false, enabled: config.batteryTempEnabled && !thermalOnly,
                          limit: config.batteryTempLimit, sustain: config.batteryTempSustainSeconds, clearMargin: config.batteryTempClearMargin,
                          rule: .batteryTemperature, latched: &s.latched, now: m, instant: arming)
         if bat.active {
