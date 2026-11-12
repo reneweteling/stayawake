@@ -4,6 +4,10 @@ on:
   push:
     branches:
       - main
+    paths-ignore:
+      - 'docs/**'
+      - 'design/**'
+      - '**.md'
 
 env:
   GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -90,16 +94,31 @@ jobs:
     name: Build
     runs-on: macos-latest
     needs: version
-    env:
-      # secrets are not allowed in step-level `if:` expressions, so expose the
-      # presence of the signing cert as an env var instead.
-      HAS_SIGNING: ${{ secrets.MACOS_CERT_P12 != '' }}
     steps:
       - name: Checkout
         uses: actions/checkout@v7
         with:
           fetch-depth: 0
           token: ${{ secrets.GITHUB_TOKEN }}
+
+      # This workflow only runs on release pushes to main, so an unsigned
+      # build must never be shipped: fail here instead of falling back.
+      - name: Require signing secrets
+        shell: bash
+        env:
+          MACOS_CERT_P12: ${{ secrets.MACOS_CERT_P12 }}
+          MACOS_CERT_PASSWORD: ${{ secrets.MACOS_CERT_PASSWORD }}
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_APP_PASSWORD: ${{ secrets.APPLE_APP_PASSWORD }}
+        run: |
+          missing=0
+          for name in MACOS_CERT_P12 MACOS_CERT_PASSWORD APPLE_ID APPLE_APP_PASSWORD; do
+            if [[ -z "${!name}" ]]; then
+              echo "::error::Missing required secret $name"
+              missing=1
+            fi
+          done
+          exit $missing
 
       - name: Run tests
         shell: bash
@@ -110,7 +129,6 @@ jobs:
         run: ./scripts/update-version.sh "${{ needs.version.outputs.version }}"
 
       - name: Import Developer ID certificate
-        if: ${{ env.HAS_SIGNING == 'true' }}
         shell: bash
         env:
           MACOS_CERT_P12: ${{ secrets.MACOS_CERT_P12 }}
@@ -130,13 +148,12 @@ jobs:
       - name: Build StayAwake.app
         shell: bash
         env:
-          SIGN_IDENTITY: ${{ env.HAS_SIGNING == 'true' && 'Developer ID Application' || '-' }}
+          SIGN_IDENTITY: Developer ID Application
         run: ./scripts/build.sh
 
       # Notarize the app itself first and staple the ticket to it, so the
       # app keeps working offline once it is copied out of the disk image.
       - name: Notarize and staple the app
-        if: ${{ env.HAS_SIGNING == 'true' }}
         shell: bash
         env:
           APPLE_ID: ${{ secrets.APPLE_ID }}
@@ -147,16 +164,16 @@ jobs:
           xcrun notarytool submit "$RUNNER_TEMP/notarize.zip" \
             --apple-id "$APPLE_ID" --team-id "$APPLE_TEAM_ID" --password "$APPLE_APP_PASSWORD" --wait
           xcrun stapler staple build/StayAwake.app
+          xcrun stapler validate build/StayAwake.app
           rm -f "$RUNNER_TEMP/notarize.zip"
 
       - name: Build disk image
         shell: bash
         env:
-          SIGN_IDENTITY: ${{ env.HAS_SIGNING == 'true' && 'Developer ID Application' || '-' }}
+          SIGN_IDENTITY: Developer ID Application
         run: ./scripts/make-dmg.sh
 
       - name: Notarize and staple the disk image
-        if: ${{ env.HAS_SIGNING == 'true' }}
         shell: bash
         env:
           APPLE_ID: ${{ secrets.APPLE_ID }}
@@ -166,6 +183,7 @@ jobs:
           xcrun notarytool submit build/StayAwake.dmg \
             --apple-id "$APPLE_ID" --team-id "$APPLE_TEAM_ID" --password "$APPLE_APP_PASSWORD" --wait
           xcrun stapler staple build/StayAwake.dmg
+          xcrun stapler validate build/StayAwake.dmg
           echo "Disk image size: $(du -sh build/StayAwake.dmg | cut -f1)"
 
       - name: Upload build artifact
