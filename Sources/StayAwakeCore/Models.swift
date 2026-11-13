@@ -183,6 +183,8 @@ public struct TripInfo: Codable, Equatable, Sendable {
 public enum Alert: String, Codable, Equatable, Sendable {
     /// Power went from AC to battery while armed or holding.
     case unpluggedWhileHolding
+    /// Turned on again by itself after a low-battery stop, because the Mac was plugged in.
+    case rearmedOnPower
 }
 
 public enum Action: String, Codable, Sendable {

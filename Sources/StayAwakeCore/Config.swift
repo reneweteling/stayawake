@@ -31,7 +31,7 @@ public enum ConfigRange {
 public struct Config: Codable, Equatable, Sendable {
     /// Bumped when stored settings need more than "missing keys take their
     /// default". See `decodeLenient`.
-    public static let currentVersion = 4
+    public static let currentVersion = 5
     public var configVersion = Config.currentVersion
     // CPU temperature, compared as the rolling average of the curated SMC keys
     public var cpuEnabled = true
@@ -86,6 +86,9 @@ public struct Config: Codable, Equatable, Sendable {
     // General behaviour
     public var afterTrip: AfterTrip = .stayOff
     public var armDefault: ArmDuration = .untilTrip
+    /// After a stop for a low battery, turn on again once the Mac is plugged in and
+    /// the charge is back above the floor. Off by default. See `AutoRearm`.
+    public var rearmWhenPluggedIn = false
     // Notifications tab
     public var notifyOnTrip = true
     /// Minutes before a trip to warn. 0 means off.
@@ -171,15 +174,16 @@ public struct Config: Codable, Equatable, Sendable {
     /// Balanced to 100 C and 95 C. A rule the user never touched (still at
     /// the default of the version it was stored with; a missing key counts as
     /// the default) moves to the new defaults. Edited values stay as they are.
-    /// Version 4 raises the battery floor default from 20 to 40.
+    /// Version 4 raises the battery floor default from 20 to 40. Version 5 adds
+    /// `rearmWhenPluggedIn`, which needs no data migration (a missing key is off).
     static func migrate(_ input: [String: Any]) -> [String: Any] {
         var stored = input
         let version = (stored["configVersion"] as? NSNumber)?.intValue ?? 1
-        guard version < 4 else { return stored }
+        guard version < Config.currentVersion else { return stored }
         if version < 3 { stored = migrateHeat(stored, version: version) }
         // Version 4 raised the battery floor from 20 to 40. A floor still at 20 (or
         // missing) was never touched, so it takes the new default. Edited values stay.
-        if ((stored["floorPercent"] as? NSNumber)?.intValue ?? 20) == 20 { stored.removeValue(forKey: "floorPercent") }
+        if version < 4, ((stored["floorPercent"] as? NSNumber)?.intValue ?? 20) == 20 { stored.removeValue(forKey: "floorPercent") }
         stored["configVersion"] = Config.currentVersion
         return stored
     }

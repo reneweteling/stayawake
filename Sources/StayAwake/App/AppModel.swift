@@ -478,6 +478,7 @@ final class AppModel: ObservableObject {
 
         if let trip = d.trip { handleTrip(trip, snapshot: snap, config: cfg) }
         if d.alerts.contains(.unpluggedWhileHolding) { handleUnplug(snapshot: snap) }
+        if d.alerts.contains(.rearmedOnPower) { handleRearmedOnPower(snapshot: snap, config: cfg) }
 
         // The UI shows what the system says. If we hold but the system says
         // sleep is allowed (a watchdog fired, a wake), put the hold back.
@@ -516,6 +517,14 @@ final class AppModel: ObservableObject {
         lastEvent = "\(clockNow()) · \(trip.message)"
         if cfg.notifyOnTrip { NotificationManager.shared.notifyTrip(trip, at: Date(), timeZone: .current) }
         NotificationManager.shared.playTripSound(named: settings.tripSound)
+    }
+
+    private func handleRearmedOnPower(snapshot snap: Snapshot, config cfg: Config) {
+        let level = snap.batteryPercent.map { ", battery \($0)%" } ?? ""
+        let text = "Turned on again: plugged in\(level)"
+        record(entry("auto_rearm", snapshot: snap).with(message: text))
+        lastEvent = "\(clockNow()) · \(text)"
+        if cfg.notifyOnTrip { NotificationManager.shared.notifyArmed(text) }
     }
 
     private func handleUnplug(snapshot snap: Snapshot) {

@@ -808,6 +808,45 @@ final class RuleEngineTests: XCTestCase {
         XCTAssertEqual(rig2.eval().phase, .tripped)
     }
 
+    func testRearmWhenPluggedInAfterBatteryFloorStop() {
+        var rig = Rig(tweak: { $0.rearmWhenPluggedIn = true })
+        rig.arm()
+        rig.snap.batteryPercent = 30
+        XCTAssertEqual(rig.eval().state.lastTrip?.rule, .batteryFloor)
+        XCTAssertEqual(rig.state.phase, .tripped)
+        let still = rig.eval()
+        XCTAssertEqual(still.phase, .tripped, "still on battery")
+        rig.snap.powerSource = .ac
+        rig.snap.isCharging = true
+        rig.snap.batteryPercent = 45
+        let d = rig.eval()
+        XCTAssertEqual(d.phase, .holding)
+        XCTAssertEqual(d.action, .hold)
+        XCTAssertEqual(d.alerts, [.rearmedOnPower])
+    }
+
+    func testNoRearmWhenPluggedInWithSettingOff() {
+        var rig = Rig()
+        rig.arm()
+        rig.snap.batteryPercent = 30
+        rig.eval()
+        rig.snap.powerSource = .ac
+        rig.snap.isCharging = true
+        rig.snap.batteryPercent = 45
+        XCTAssertEqual(rig.eval().phase, .tripped)
+    }
+
+    func testNoRearmOnPowerAfterOtherTripReason() {
+        var rig = Rig(tweak: { $0.rearmWhenPluggedIn = true })
+        rig.arm()
+        rig.snap.thermal = .critical
+        rig.eval()
+        rig.snap.thermal = .nominal
+        rig.snap.powerSource = .ac
+        XCTAssertEqual(rig.eval().phase, .tripped)
+    }
+
+
     func testOffPhaseNeverActs() {
         var rig = Rig()
         rig.snap.cpuTemperature = 99

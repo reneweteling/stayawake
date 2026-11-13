@@ -402,6 +402,7 @@ public enum RuleEngine {
         var action: Action = .none
         var trip: TripInfo?
         var timerEnded = false
+        var rearmedOnPower = false
 
         func deadlinePassed() -> Bool {
             if let d = s.armDeadlineMonotonic, m >= d { return true }
@@ -436,8 +437,14 @@ public enum RuleEngine {
                 action = .hold
             }
         case .tripped:
-            if woke, config.afterTrip == .rearmOnWake, let last = s.lastTrip,
-               last.rule != .hardCap, last.rule != .sensorFailure, failures.isEmpty {
+            let wakeRearm = woke && config.afterTrip == .rearmOnWake && s.lastTrip.map {
+                $0.rule != .hardCap && $0.rule != .sensorFailure } == true && failures.isEmpty
+            let powerRearm = AutoRearm.shouldRearm(
+                enabled: config.rearmWhenPluggedIn, lastTrip: s.lastTrip?.rule, powerSource: snap.powerSource,
+                batteryPercent: snap.batteryPercent, floorEnabled: config.floorEnabled,
+                floorPercent: config.floorPercent, otherRulesClear: failures.isEmpty)
+            if wakeRearm || powerRearm {
+                rearmedOnPower = !wakeRearm
                 s.lastTrip = nil
                 if scheduleOpen {
                     s.phase = .holding
@@ -451,6 +458,7 @@ public enum RuleEngine {
 
         // Unplug alert: once per AC to battery change, only while armed or holding.
         var alerts: [Alert] = []
+        if rearmedOnPower { alerts.append(.rearmedOnPower) }
         if config.alertOnUnplug, s.lastPowerSource == .ac, snap.powerSource == .battery,
            prev == .waiting || prev == .holding {
             alerts.append(.unpluggedWhileHolding)

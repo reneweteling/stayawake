@@ -207,6 +207,17 @@ final class ConfigTests: XCTestCase {
         XCTAssertEqual(back.floorPercent, 20, "picked on purpose after the bump")
     }
 
+    func testVersion4StoredConfigGainsRearmSettingOffAndKeepsFloor() throws {
+        var d = try JSONSerialization.jsonObject(with: JSONEncoder().encode(Config())) as! [String: Any]
+        d["configVersion"] = 4
+        d["floorPercent"] = 20
+        d.removeValue(forKey: "rearmWhenPluggedIn")
+        let c = try Config.decodeLenient(from: JSONSerialization.data(withJSONObject: d))
+        XCTAssertFalse(c.rearmWhenPluggedIn)
+        XCTAssertEqual(c.floorPercent, 20)
+        XCTAssertEqual(c.configVersion, 5)
+    }
+
     func testMigrationIsIdempotent() throws {
         let once = try Config.decodeLenient(from: v1Blob(["gpuLimit": 80]))
         let twice = try Config.decodeLenient(from: JSONEncoder().encode(once))

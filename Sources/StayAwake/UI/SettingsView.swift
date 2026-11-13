@@ -250,6 +250,10 @@ private struct SafetyTab: View {
                     NumberRow(label: "Stop below",
                               help: "Starts again once you plug in, or when the battery is back at \(settings.config.floorPercent + 10) %.",
                               value: $settings.config.floorPercent, range: 5...60) { "\($0) %" }
+                    Toggle(isOn: $settings.config.rearmWhenPluggedIn) {
+                        Text("Turn on again when plugged in after a low-battery stop")
+                        Text("Only after a stop for low battery. Every other limit has to be fine too.")
+                    }
                 }
             } header: {
                 Text("Battery")
