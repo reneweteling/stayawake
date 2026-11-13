@@ -30,8 +30,9 @@ final class UpdateChecker: ObservableObject {
     var isBusy: () -> Bool = { true }
     /// Disarms and releases sleep before the bundles swap. Throws to stop the update.
     var prepareForInstall: @MainActor () async throws -> Void = {}
-    /// Undo for `prepareForInstall` when a later step fails.
-    var installFailed: @MainActor () -> Void = {}
+    /// Any failed install: logs `update_failed` with the reason and makes
+    /// arming work again.
+    var installFailed: @MainActor (String) -> Void = { _ in }
 
     var canInstall: Bool { asset != nil && SelfUpdater.canUpdateInPlace }
     var currentVersion: String { Telemetry.appVersion }
@@ -76,15 +77,20 @@ final class UpdateChecker: ObservableObject {
     func install() async {
         guard let asset, let latestVersion, installStep == nil else { return }
         installError = nil
-        installStep = "Downloading"
+        installStep = UpdateStage.download.title
         do {
-            try await SelfUpdater.install(asset: asset, version: latestVersion, progress: { step in
-                Task { @MainActor in UpdateChecker.shared.installStep = step }
+            try await SelfUpdater.install(asset: asset, version: latestVersion, progress: { stage in
+                Task { @MainActor in
+                    let checker = UpdateChecker.shared
+                    if checker.installStep != nil { checker.installStep = stage.title }
+                }
             }, beforeSwap: prepareForInstall)
         } catch {
+            let step = installStep ?? "Installing"
             installStep = nil
-            installError = error.localizedDescription
-            installFailed()
+            let reason = "\(step): \(error.localizedDescription)"
+            installError = reason
+            installFailed(reason)
         }
     }
 

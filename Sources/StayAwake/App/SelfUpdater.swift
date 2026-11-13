@@ -51,8 +51,8 @@ enum SelfUpdater {
     }()
 
     static func install(asset: ReleaseInfo.Asset, version: String,
-                        progress: @escaping @Sendable (String) -> Void,
-                        beforeSwap: @MainActor () async throws -> Void) async throws {
+                        progress: @escaping @Sendable (UpdateStage) -> Void,
+                        beforeSwap: @escaping @MainActor () async throws -> Void) async throws {
         let current = try installedBundle()
         guard canUpdateInPlace else {
             throw Failure(message: "This copy of StayAwake is not signed by its developer, so it cannot check an update")
@@ -63,60 +63,81 @@ enum SelfUpdater {
         var handedOver = false
         defer { if !handedOver { try? FileManager.default.removeItem(at: work) } }
 
-        progress("Downloading")
-        var request = URLRequest(url: asset.downloadURL)
-        request.setValue("application/octet-stream", forHTTPHeaderField: "Accept")
-        let (downloaded, response) = try await session.download(for: request)
-        if let http = response as? HTTPURLResponse, !(200..<300).contains(http.statusCode) {
-            throw Failure(message: "Download failed with \(http.statusCode)")
-        }
+        progress(.download)
         let dmg = work.appendingPathComponent("StayAwake.dmg")
-        try FileManager.default.moveItem(at: downloaded, to: dmg)
-
-        progress("Checking")
-        let staged = try await Task.detached { () throws -> URL in
-            if let expected = asset.sha256 {
-                let data = try Data(contentsOf: dmg, options: .mappedIfSafe)
-                let actual = SHA256.hash(data: data).map { String(format: "%02x", $0) }.joined()
-                guard actual == expected else { throw Failure(message: "The download does not match the release checksum") }
+        try await withUpdateTimeout(.download) {
+            var request = URLRequest(url: asset.downloadURL)
+            request.setValue("application/octet-stream", forHTTPHeaderField: "Accept")
+            let (downloaded, response) = try await session.download(for: request)
+            if let http = response as? HTTPURLResponse, !(200..<300).contains(http.statusCode) {
+                throw Failure(message: "Download failed with \(http.statusCode)")
             }
-            let mount = work.appendingPathComponent("mnt")
-            let attach = run("/usr/bin/hdiutil", ["attach", dmg.path, "-nobrowse", "-readonly", "-noautoopen", "-mountpoint", mount.path])
-            guard attach.status == 0 else { throw Failure(message: "Could not open the update: \(attach.output)") }
-            defer { _ = run("/usr/bin/hdiutil", ["detach", mount.path, "-force"]) }
-            guard let app = try FileManager.default.contentsOfDirectory(atPath: mount.path).first(where: { $0.hasSuffix(".app") }) else {
-                throw Failure(message: "The update holds no app")
-            }
-            let staged = work.appendingPathComponent(app)
-            let copy = run("/usr/bin/ditto", ["\(mount.path)/\(app)", staged.path])
-            guard copy.status == 0 else { throw Failure(message: "Could not copy the update: \(copy.output)") }
-            try verify(staged, expectedVersion: version)
-            return staged
-        }.value
+            try FileManager.default.moveItem(at: downloaded, to: dmg)
+        }
 
-        progress("Restoring sleep")
+        progress(.verify)
+        let staged = try await withUpdateTimeout(.verify) {
+            try await Task.detached { try stage(dmg: dmg, in: work, asset: asset, version: version) }.value
+        }
+
+        progress(.restoreSleep)
         // Never swap with sleep disabled: the model disarms, releases and
         // throws when it cannot confirm that sleep is back.
-        try await beforeSwap()
+        try await withUpdateTimeout(.restoreSleep) { try await beforeSwap() }
 
-        progress("Restarting")
+        progress(.restart)
         // A detached shell waits for this process to quit, swaps the bundles
         // (putting the old one back if the move fails) and opens the new one.
-        let script = """
-        while kill -0 "$0" 2>/dev/null; do sleep 0.2; done
-        backup="$1.old-$$"
-        if mv "$1" "$backup"; then
-          if mv "$2" "$1"; then rm -rf "$backup"; else mv "$backup" "$1"; fi
-        fi
-        rm -rf "$3"
-        open "$1"
-        """
         let swap = Process()
         swap.executableURL = URL(fileURLWithPath: "/bin/sh")
-        swap.arguments = ["-c", script, String(ProcessInfo.processInfo.processIdentifier), current.path, staged.path, work.path]
+        swap.arguments = SwapScript.arguments(pid: ProcessInfo.processInfo.processIdentifier, current: current.path,
+                                              staged: staged.path, work: work.path, log: EventLog.url.path)
         try swap.run()
         handedOver = true
-        await MainActor.run { NSApp.terminate(nil) }
+        await MainActor.run { quitForUpdate() }
+    }
+
+    /// Quits so the shell can swap the bundles. Sleep is already restored.
+    ///
+    /// `NSApp.terminate` must not run inside a main-actor task: the app
+    /// delegate answers `.terminateLater` from another main-actor task, which
+    /// cannot start while this one blocks inside terminate. 1.5.0 and 1.5.1
+    /// hung there forever. So: terminate from the run loop, let the delegate
+    /// answer `.terminateNow` for an update, and exit hard if it still lives.
+    @MainActor static func quitForUpdate() {
+        isQuittingForUpdate = true
+        RunLoop.main.perform(inModes: [.common]) {
+            MainActor.assumeIsolated { NSApp.terminate(nil) }
+        }
+        DispatchQueue.global().asyncAfter(deadline: .now() + UpdateStage.restart.timeLimit) {
+            NSLog("StayAwake: did not quit for the update in time, exiting")
+            exit(0)
+        }
+    }
+
+    /// Set once sleep is confirmed restored and the swap shell is running.
+    @MainActor static var isQuittingForUpdate = false
+
+    /// Checksum, mount, copy the app out, verify. Runs off the main thread.
+    static func stage(dmg: URL, in work: URL, asset: ReleaseInfo.Asset, version: String) throws -> URL {
+        if let expected = asset.sha256 {
+            let data = try Data(contentsOf: dmg, options: .mappedIfSafe)
+            let actual = SHA256.hash(data: data).map { String(format: "%02x", $0) }.joined()
+            guard actual == expected else { throw Failure(message: "The download does not match the release checksum") }
+        }
+        let mount = work.appendingPathComponent("mnt")
+        let attach = run("/usr/bin/hdiutil", ["attach", dmg.path, "-nobrowse", "-readonly", "-noautoopen",
+                                              "-mountpoint", mount.path])
+        guard attach.status == 0 else { throw Failure(message: "Could not open the update: \(attach.output)") }
+        defer { run("/usr/bin/hdiutil", ["detach", mount.path, "-force"], timeout: 30) }
+        guard let app = try FileManager.default.contentsOfDirectory(atPath: mount.path).first(where: { $0.hasSuffix(".app") }) else {
+            throw Failure(message: "The update holds no app")
+        }
+        let staged = work.appendingPathComponent(app)
+        let copy = run("/usr/bin/ditto", ["\(mount.path)/\(app)", staged.path])
+        guard copy.status == 0 else { throw Failure(message: "Could not copy the update: \(copy.output)") }
+        try verify(staged, expectedVersion: version)
+        return staged
     }
 
     // MARK: - Verification
@@ -163,8 +184,10 @@ enum SelfUpdater {
         return SecStaticCodeCheckValidity(code, flags, requirement) == errSecSuccess
     }
 
+    /// Runs a tool and returns its status and output. Kills it after
+    /// `timeout` seconds so a stuck hdiutil or spctl cannot hang the update.
     @discardableResult
-    static func run(_ tool: String, _ arguments: [String]) -> (status: Int32, output: String) {
+    static func run(_ tool: String, _ arguments: [String], timeout: TimeInterval = 120) -> (status: Int32, output: String) {
         let process = Process()
         process.executableURL = URL(fileURLWithPath: tool)
         process.arguments = arguments
@@ -172,9 +195,24 @@ enum SelfUpdater {
         process.standardOutput = pipe
         process.standardError = pipe
         process.standardInput = FileHandle.nullDevice
+        let exited = DispatchSemaphore(value: 0)
+        process.terminationHandler = { _ in exited.signal() }
         do { try process.run() } catch { return (-1, error.localizedDescription) }
-        let data = pipe.fileHandleForReading.readDataToEndOfFile()
-        process.waitUntilExit()
+        var data = Data()
+        let reader = DispatchGroup()
+        reader.enter()
+        DispatchQueue.global().async {
+            data = pipe.fileHandleForReading.readDataToEndOfFile()
+            reader.leave()
+        }
+        let name = (tool as NSString).lastPathComponent
+        if exited.wait(timeout: .now() + timeout) == .timedOut {
+            process.terminate()
+            if exited.wait(timeout: .now() + 3) == .timedOut { kill(process.processIdentifier, SIGKILL) }
+            _ = reader.wait(timeout: .now() + 2)
+            return (-1, "\(name) did not finish within \(Int(timeout)) s")
+        }
+        _ = reader.wait(timeout: .now() + 5)
         return (process.terminationStatus, String(decoding: data, as: UTF8.self).trimmingCharacters(in: .whitespacesAndNewlines))
     }
 }

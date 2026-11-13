@@ -126,11 +126,13 @@ private struct GeneralTab: View {
             Section("Startup") {
                 Toggle("Open StayAwake at login", isOn: Binding(get: { settings.launchAtLogin }, set: { settings.setLaunchAtLogin($0) }))
                 Toggle("Turn on StayAwake when it opens", isOn: $settings.startArmed)
-                UpdateToggle(updates: UpdateChecker.shared)
                 Toggle(isOn: $settings.clearLeftoverOnLaunch) {
                     Text("Repair sleep when StayAwake opens")
                     Text("If StayAwake quit while it was keeping the Mac awake, normal sleep is turned back on.")
                 }
+            }
+            Section("Updates") {
+                UpdateToggle(updates: UpdateChecker.shared)
             }
             Section("Menu bar") {
                 Picker("Show next to the icon", selection: $settings.menuBarReadout) {
@@ -836,7 +838,8 @@ private struct UpdateToggle: View {
     var body: some View {
         Toggle(isOn: Binding(get: { updates.autoInstall }, set: { updates.autoInstall = $0 })) {
             Text("Install updates automatically")
-            Text("Only while StayAwake is off. Sleep is always restored before the app is replaced.")
+            Text("On by default. Only while StayAwake is off. Turn it off to install by hand from About.")
         }
+        .toggleStyle(.checkbox)
     }
 }

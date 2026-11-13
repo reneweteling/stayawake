@@ -49,7 +49,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate, NSW
                 || self.settingsWindow?.isVisible == true
         }
         updates.prepareForInstall = { [weak self] in try await self?.model.prepareForUpdate() }
-        updates.installFailed = { [weak self] in self?.model.updateDidFail() }
+        updates.installFailed = { [weak self] reason in self?.model.updateDidFail(reason: reason) }
         model.$engine.map(\.phase).removeDuplicates().dropFirst()
             .receive(on: DispatchQueue.main)
             .sink { phase in
@@ -66,7 +66,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate, NSW
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool { false }
 
     /// Quit disarms first: the model releases sleep and waits up to 2 s.
+    /// An update quit answers at once: sleep was already restored and
+    /// confirmed, and a delayed answer can deadlock (see `quitForUpdate`).
     func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
+        if SelfUpdater.isQuittingForUpdate { return .terminateNow }
         Task { @MainActor in
             await model.prepareToQuit()
             NSApp.reply(toApplicationShouldTerminate: true)

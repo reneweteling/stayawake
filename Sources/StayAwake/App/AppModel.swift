@@ -147,12 +147,8 @@ final class AppModel: ObservableObject {
             record(entry("quit"))
             stopHeartbeat()
         }
-        await withTaskGroup(of: Void.self) { group in
-            group.addTask { await work.value }
-            group.addTask { try? await Task.sleep(for: .seconds(2)) }
-            await group.next()
-            group.cancelAll()
-        }
+        // Not a task group: that waits for `work` even after the 2 s are up.
+        _ = try? await withUpdateTimeout(.restart, seconds: 2) { await work.value }
     }
 
     /// The updater calls this right before it swaps the app. Disarms, stops
@@ -186,8 +182,15 @@ final class AppModel: ObservableObject {
         if let failure { throw SelfUpdater.Failure(message: failure) }
     }
 
-    /// The update failed after `prepareForUpdate`: arming works again.
-    func updateDidFail() { updating = false }
+    /// Any failed install: log the reason and make arming work again. Queued,
+    /// so it lands after a `prepareForUpdate` that is still running.
+    func updateDidFail(reason: String) {
+        enqueue { [self] in
+            updating = false
+            note("Update failed: \(reason)", event: "update_failed")
+            updateStatus()
+        }
+    }
 
     // MARK: - User actions
 
