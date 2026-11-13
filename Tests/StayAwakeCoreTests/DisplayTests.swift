@@ -158,4 +158,105 @@ final class MenuBarStatusTests: XCTestCase {
         XCTAssertEqual(rig.state.lastTrip?.shortReason, "GPU HOT")
         XCTAssertEqual(MenuBarStatus.make(input(rig)).title, "GPU HOT")
     }
+
+    // MARK: Tripped, live versus cleared
+
+    private func tripped(_ rig: inout Rig, seconds: Double = 45) {
+        rig.arm()
+        rig.advance(seconds)
+        XCTAssertEqual(rig.state.phase, .tripped)
+    }
+
+    private func assertStopped(_ s: MenuBarStatus, file: StaticString = #filePath, line: UInt = #line) {
+        XCTAssertEqual(s.kind, .stopped, file: file, line: line)
+        XCTAssertEqual(s.symbol, "moon.zzz", file: file, line: line)
+        XCTAssertEqual(s.title, "", file: file, line: line)
+        XCTAssertEqual(s.tone, .normal, file: file, line: line)
+        XCTAssertTrue(s.tooltip.hasPrefix("StayAwake stopped at "), s.tooltip, file: file, line: line)
+    }
+
+    func testBatteryLowShowsTheLiveValueWhileStillLow() {
+        var rig = Rig()
+        rig.snap.batteryPercent = 60
+        rig.arm()
+        rig.snap.batteryPercent = 39
+        rig.advance(30)
+        XCTAssertEqual(rig.state.lastTrip?.shortReason, "LOW 39%")
+        rig.snap.batteryPercent = 38
+        rig.advance(30)
+        let s = MenuBarStatus.make(input(rig))
+        XCTAssertEqual(s.kind, .tripped)
+        XCTAssertEqual(s.title, "LOW 38%")
+        XCTAssertEqual(s.tone, .red)
+    }
+
+    func testBatteryLowClearedWhenChargedGoesNeutral() {
+        var rig = Rig()
+        rig.snap.batteryPercent = 60
+        rig.arm()
+        rig.snap.batteryPercent = 39
+        rig.advance(30)
+        rig.snap.batteryPercent = 80; rig.snap.isCharging = true; rig.snap.powerSource = .ac
+        rig.advance(30)
+        XCTAssertEqual(rig.state.phase, .tripped, "the trip stays latched")
+        XCTAssertEqual(rig.state.lastTrip?.shortReason, "LOW 39%")
+        let s = MenuBarStatus.make(input(rig))
+        assertStopped(s)
+        XCTAssertTrue(s.tooltip.contains("Battery 39% is below 40%"), s.tooltip)
+    }
+
+    func testBatteryTemperatureLiveThenCleared() {
+        var rig = Rig { $0.batteryTempSustainSeconds = 0 }
+        rig.arm()
+        rig.snap.batteryTemperature = 45
+        rig.advance(30)
+        XCTAssertEqual(rig.state.phase, .tripped)
+        XCTAssertEqual(MenuBarStatus.make(input(rig)).kind, .tripped)
+        rig.snap.batteryTemperature = 30
+        rig.advance(30)
+        assertStopped(MenuBarStatus.make(input(rig)))
+    }
+
+    func testCPUAndGPULiveThenCleared() {
+        var cpu = Rig { $0.cpuSustainSeconds = 0; $0.smoothingSeconds = 0 }
+        cpu.arm()
+        cpu.snap.cpuTemperature = 105
+        cpu.advance(30)
+        XCTAssertEqual(MenuBarStatus.make(input(cpu)).kind, .tripped)
+        cpu.snap.cpuTemperature = 50
+        cpu.advance(30)
+        assertStopped(MenuBarStatus.make(input(cpu)))
+
+        var gpu = Rig { $0.gpuSustainSeconds = 0; $0.smoothingSeconds = 0 }
+        gpu.arm()
+        gpu.snap.gpuTemperature = 100
+        gpu.advance(30)
+        XCTAssertEqual(MenuBarStatus.make(input(gpu)).title, "GPU HOT")
+        gpu.snap.gpuTemperature = 45
+        gpu.advance(30)
+        assertStopped(MenuBarStatus.make(input(gpu)))
+    }
+
+    func testSensorFailureLiveThenCleared() {
+        var rig = Rig { $0.sensorFailureSeconds = 60 }
+        rig.arm()
+        rig.snap.cpuTemperature = nil
+        rig.advance(120)
+        XCTAssertEqual(rig.state.lastTrip?.rule, .sensorFailure)
+        XCTAssertEqual(MenuBarStatus.make(input(rig)).title, "SENSOR")
+        rig.snap.cpuTemperature = 50
+        rig.advance(30)
+        assertStopped(MenuBarStatus.make(input(rig)))
+    }
+
+    func testWithoutADecisionATripShowsNeutral() {
+        var rig = Rig()
+        rig.snap.batteryPercent = 60
+        rig.arm()
+        rig.snap.batteryPercent = 39
+        rig.advance(30)
+        var i = input(rig)
+        i.decision = nil
+        assertStopped(MenuBarStatus.make(i))
+    }
 }

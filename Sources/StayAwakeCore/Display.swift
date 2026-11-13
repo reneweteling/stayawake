@@ -125,7 +125,7 @@ public enum Readout {
 }
 
 public enum StatusKind: String, Equatable, Sendable {
-    case off, waiting, holding, warning, tripped, setup
+    case off, waiting, holding, warning, tripped, stopped, setup
 }
 
 public enum StatusTone: String, Equatable, Sendable {
@@ -178,12 +178,7 @@ public struct MenuBarStatus: Equatable, Sendable {
     public static func make(_ i: Input) -> MenuBarStatus {
         switch i.phase {
         case .tripped:
-            let trip = i.lastTrip
-            let at = i.trippedAt.map { Readout.clock($0, in: i.timeZone) }
-            let text = trip?.message ?? "a rule tripped"
-            return MenuBarStatus(kind: .tripped, symbol: "exclamationmark.triangle.fill",
-                                 title: trip?.shortReason ?? "TRIPPED", tone: .red,
-                                 tooltip: "Sleep restored\(at.map { " at \($0)" } ?? ""): \(text)")
+            return trippedStatus(i)
         case .off:
             if let setup = i.setupMessage {
                 return MenuBarStatus(kind: .setup, symbol: setupSymbol, title: "SETUP", tooltip: setup)
@@ -210,6 +205,34 @@ public struct MenuBarStatus: Equatable, Sendable {
             return MenuBarStatus(kind: .holding, symbol: "cup.and.saucer.fill", title: readout,
                                  tooltip: parts.joined(separator: " · "))
         }
+    }
+
+    /// A trip stays latched until the user acts, but the menu bar must not show
+    /// the value from the moment of the trip as if it were current. While the
+    /// rule still fails, show its live value. Once it no longer fails, show a
+    /// calm "stopped" state. The popover keeps the timestamped reason.
+    private static func trippedStatus(_ i: Input) -> MenuBarStatus {
+        let at = i.trippedAt.map { Readout.clock($0, in: i.timeZone) }
+        guard let trip = i.lastTrip else {
+            return MenuBarStatus(kind: .tripped, symbol: "exclamationmark.triangle.fill", title: "TRIPPED", tone: .red,
+                                 tooltip: "Sleep restored\(at.map { " at \($0)" } ?? ""): a rule tripped")
+        }
+        if let live = liveTrip(trip, i) {
+            return MenuBarStatus(kind: .tripped, symbol: "exclamationmark.triangle.fill", title: live.shortReason, tone: .red,
+                                 tooltip: "Sleep restored\(at.map { " at \($0)" } ?? ""): \(live.message)")
+        }
+        return MenuBarStatus(kind: .stopped, symbol: "moon.zzz",
+                             tooltip: "StayAwake stopped\(at.map { " at \($0)" } ?? ""): \(trip.message). "
+                                 + "Normal sleep is back and the condition has cleared. Turn on again when ready.")
+    }
+
+    /// The current state of the tripped rule, or nil when it no longer fails.
+    private static func liveTrip(_ trip: TripInfo, _ i: Input) -> TripInfo? {
+        if trip.rule == .schedule {
+            let closed = i.config.schedule.enabled && i.decision?.scheduleOpen == false
+            return closed ? trip : nil
+        }
+        return i.decision?.failing.first { $0.rule == trip.rule }
     }
 
     private static func readoutText(_ i: Input) -> String {
