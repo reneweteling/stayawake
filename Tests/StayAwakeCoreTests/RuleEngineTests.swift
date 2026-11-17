@@ -540,6 +540,46 @@ final class RuleEngineTests: XCTestCase {
         XCTAssertEqual(ds.last?.trip?.shortReason, "CAP 8h")
     }
 
+    func testTimeCapDoesNotStopAMacOnPower() {
+        var rig = Rig()
+        rig.snap.powerSource = .ac
+        rig.snap.lidClosed = true
+        rig.config.lidEnabled = false
+        rig.config.idleEnabled = false
+        rig.arm()
+        let ds = rig.advance(86 * 3600, step: 60)
+        XCTAssertTrue(ds.allSatisfy { $0.phase == .holding })
+        XCTAssertNil(ds.last?.state.capSince)
+    }
+
+    func testTimeCapCountsFromUnplugging() {
+        var rig = Rig()
+        rig.snap.powerSource = .ac
+        rig.arm()
+        XCTAssertTrue(rig.advance(20 * 3600, step: 60).allSatisfy { $0.phase == .holding })
+        rig.snap.powerSource = .battery
+        let ds = rig.advance(8 * 3600 + 60, step: 15)
+        XCTAssertTrue(ds.dropLast(5).allSatisfy { $0.phase == .holding }, "the count starts at the unplug")
+        XCTAssertEqual(ds.last?.phase, .tripped)
+        XCTAssertEqual(ds.first(where: { $0.trip != nil })?.trip?.rule, .hardCap)
+    }
+
+    func testPluggingInResetsTheTimeCap() {
+        var rig = Rig()
+        rig.arm()
+        rig.advance(7 * 3600, step: 60)
+        rig.snap.powerSource = .ac
+        rig.advance(60, step: 60)
+        rig.snap.powerSource = .battery
+        XCTAssertTrue(rig.advance(7 * 3600, step: 60).allSatisfy { $0.phase == .holding })
+    }
+
+    func testTimeCapOffNeverTrips() {
+        var rig = Rig(tweak: { $0.capEnabled = false })
+        rig.arm()
+        XCTAssertTrue(rig.advance(20 * 3600, step: 60).allSatisfy { $0.phase == .holding })
+    }
+
     // MARK: Sleep gap
 
     func testSleepGapResetsSustain() {

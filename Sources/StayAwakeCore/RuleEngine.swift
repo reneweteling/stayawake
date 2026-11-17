@@ -30,6 +30,9 @@ public struct EngineState: Codable, Equatable, Sendable {
     /// Since when the thermal state is at or above the limit.
     public var thermalSince: TimeInterval?
     public var lidSince: TimeInterval?
+    /// Since when the Mac is held on battery. The time cap counts from here,
+    /// so it never stops a Mac that is plugged in.
+    public var capSince: TimeInterval?
     public var idleSince: TimeInterval?
     public var noProcessSince: TimeInterval?
     public var noNetworkSince: TimeInterval?
@@ -75,6 +78,7 @@ public enum RuleEngine {
         s.heldSince = nil
         s.lastTrip = nil
         s.lidSince = nil
+        s.capSince = nil
         s.idleSince = nil
         s.noProcessSince = nil
         s.noNetworkSince = nil
@@ -332,10 +336,17 @@ public enum RuleEngine {
         }
         _ = (cpu.valid, gpu.valid, bat.valid)
 
-        // Hard cap.
-        if config.capEnabled, let held = s.heldSince, m - held >= Double(config.capHours) * 3600 {
-            failures.append(TripInfo(rule: .hardCap, value: (m - held) / 3600, limit: Double(config.capHours),
-                message: "Held for \(config.capHours) h, the time cap",
+        // Time cap: counts held time on battery only. Plugged in (a closed
+        // MacBook on a desk) it does not stop the Mac; unplugging starts the
+        // count from zero.
+        if config.capEnabled, s.heldSince != nil, snap.powerSource == .battery {
+            s.capSince = s.capSince ?? m
+        } else {
+            s.capSince = nil
+        }
+        if let since = s.capSince, m - since >= Double(config.capHours) * 3600 {
+            failures.append(TripInfo(rule: .hardCap, value: (m - since) / 3600, limit: Double(config.capHours),
+                message: "Held on battery for \(config.capHours) h, the time cap",
                 shortReason: RuleID.hardCap.shortReason(value: nil, config: config)))
         }
 
@@ -456,6 +467,13 @@ public enum RuleEngine {
             }
         }
 
+        // A hold that started in this step counts toward the cap from now.
+        if s.phase != .holding {
+            s.capSince = nil
+        } else if config.capEnabled, snap.powerSource == .battery, s.capSince == nil {
+            s.capSince = m
+        }
+
         // Unplug alert: once per AC to battery change, only while armed or holding.
         var alerts: [Alert] = []
         if rearmedOnPower { alerts.append(.rearmedOnPower) }
@@ -558,7 +576,7 @@ public enum RuleEngine {
               total: Double(config.watchedMinutes) * 60)
         timed(.noNetwork, "No network", enabled: config.networkEnabled, since: s.noNetworkSince,
               total: Double(config.networkMinutes) * 60)
-        timed(.hardCap, "Time cap", enabled: config.capEnabled, since: s.heldSince, total: Double(config.capHours) * 3600)
+        timed(.hardCap, "Time cap on battery", enabled: config.capEnabled, since: s.capSince, total: Double(config.capHours) * 3600)
 
         if config.schedule.enabled, scheduleOpen,
            let end = config.schedule.currentWindowEnd(at: now.wall, in: now.timeZone) {

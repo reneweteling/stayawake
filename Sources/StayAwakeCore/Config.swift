@@ -20,7 +20,7 @@ public enum ConfigRange {
     public static let thermalSustainSeconds: ClosedRange<Int> = 0...600
     public static let batteryHeatingRise: ClosedRange<Double> = 0.5...10
     public static let smoothingSeconds: ClosedRange<Int> = 0...300
-    /// Time cap in hours. The only total time limit; the helper has none.
+    /// Time cap in hours, counted while held on battery. The helper has no limit of its own.
     public static let capHours: ClosedRange<Int> = 1...12
 }
 
@@ -75,7 +75,7 @@ public struct Config: Codable, Equatable, Sendable {
     // Network
     public var networkEnabled = true
     public var networkMinutes = 15
-    // Hard cap
+    // Time cap, on battery only (see RuleEngine)
     public var capEnabled = true
     public var capHours = 8
     // Sensor failure (cannot be switched off)

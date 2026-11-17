@@ -37,7 +37,7 @@ Status: early development. The core engine and the app shell exist, the switch i
 | Idle | CPU below 10% for 15 min, lid closed |
 | Watched process | off by default, none of your list for 20 min |
 | No network | 15 min |
-| Hard time cap | 8 h |
+| Time cap on battery | 8 h held on battery. Plugged in it never stops the Mac, unplugging starts the count |
 | Sensor failure | no valid temperature for 60 s |
 
 Unplugging the cable while armed raises an alert, so you notice before the lid closes.

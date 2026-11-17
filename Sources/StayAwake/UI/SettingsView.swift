@@ -262,10 +262,11 @@ private struct SafetyTab: View {
             }
 
             Section {
-                RuleToggle(title: "Stop after a maximum time", detail: "Ends even when everything else is fine.",
+                RuleToggle(title: "Stop after a maximum time on battery",
+                           detail: "Counts only while on battery, even when everything else is fine. Plugged in, the Mac stays awake as long as the other limits allow. Unplugging starts the count again.",
                            isOn: $settings.config.capEnabled)
                 if settings.config.capEnabled {
-                    NumberRow(label: "Maximum", value: $settings.config.capHours, range: ConfigRange.capHours) { Fmt.hours($0) }
+                    NumberRow(label: "Maximum on battery", value: $settings.config.capHours, range: ConfigRange.capHours) { Fmt.hours($0) }
                 }
             } header: {
                 Text("Time")
