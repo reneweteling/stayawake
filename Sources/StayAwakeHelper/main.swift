@@ -253,7 +253,15 @@ final class ListenerDelegate: NSObject, NSXPCListenerDelegate {
         // connection as well checks the audit token of every message.
         connection.setCodeSigningRequirement(HelperIdentity.clientRequirement(relaxed: relaxedRequirement))
         connection.exportedInterface = .stayAwakeHelper()
-        connection.exportedObject = HelperConnectionHandler(engine: engine, queue: queue, clock: monotonicSeconds)
+        connection.exportedObject = HelperConnectionHandler(engine: engine, queue: queue, clock: monotonicSeconds,
+                                                            exitProcess: { [queue] in
+            // Give the reply a moment to leave, then exit. KeepAlive makes
+            // launchd start the helper again, from the binary now in the bundle.
+            queue.asyncAfter(deadline: .now() + 0.3) {
+                logger.notice("exiting for an update")
+                exit(0)
+            }
+        })
         let pid = connection.processIdentifier
         connection.invalidationHandler = { [weak self, weak connection] in
             guard let self else { return }

@@ -531,3 +531,122 @@ final class HelperXPCTests: XCTestCase {
         XCTAssertEqual(fx.runs.last, .disableSleepOff)
     }
 }
+
+// MARK: - Helper upgrade without losing the approval
+
+final class HelperRepairTests: XCTestCase {
+    let differs = HelperVersionCheck.Verdict.replace("helper 1.6.1, app 1.6.2")
+
+    func testApprovedOldHelperThatCanRestartIsRestartedNotUnregistered() {
+        XCTAssertEqual(HelperRepair.forVersion(differs, registration: .enabled, helperCanRestart: true), .restartHelper)
+    }
+
+    func testApprovedHelperBefore162IsKeptUntilRebootNotUnregistered() {
+        XCTAssertEqual(HelperRepair.forVersion(differs, registration: .enabled, helperCanRestart: false),
+                       .keepUntilReboot("helper 1.6.1, app 1.6.2"))
+    }
+
+    func testCurrentOrSilentHelperIsLeftAlone() {
+        XCTAssertEqual(HelperRepair.forVersion(.current, registration: .enabled, helperCanRestart: true), .nothing)
+        XCTAssertEqual(HelperRepair.forVersion(.unknown, registration: .enabled, helperCanRestart: false), .nothing)
+    }
+
+    func testOnlyAMissingRegistrationIsReinstalled() {
+        XCTAssertEqual(HelperRepair.forVersion(differs, registration: .notFound, helperCanRestart: true), .reinstall)
+        XCTAssertEqual(HelperRepair.forVersion(differs, registration: .notRegistered, helperCanRestart: true), .register)
+        XCTAssertEqual(HelperRepair.forVersion(differs, registration: .requiresApproval, helperCanRestart: true), .awaitApproval)
+    }
+
+    func testNoStepUnregistersAnApprovedHelper() {
+        let verdicts: [HelperVersionCheck.Verdict] = [.current, .unknown, differs]
+        for v in verdicts {
+            for can in [true, false] {
+                XCTAssertNotEqual(HelperRepair.forVersion(v, registration: .enabled, helperCanRestart: can), .reinstall)
+            }
+        }
+        let statuses: [HelperStatus?] = [nil, status(canRestart: nil), status(canRestart: true)]
+        for s in statuses {
+            XCTAssertNotEqual(HelperRepair.forFailures(registration: .enabled, helperStatus: s), .reinstall)
+        }
+    }
+
+    func testFailuresWithAnApprovedHelper() {
+        XCTAssertEqual(HelperRepair.forFailures(registration: .enabled, helperStatus: nil), .register,
+                       "silent helper: register again, never unregister")
+        XCTAssertEqual(HelperRepair.forFailures(registration: .enabled, helperStatus: status(canRestart: true)), .restartHelper)
+        XCTAssertEqual(HelperRepair.forFailures(registration: .enabled, helperStatus: status(canRestart: nil)), .nothing)
+    }
+
+    func testFailuresWithoutAnApprovedHelper() {
+        XCTAssertEqual(HelperRepair.forFailures(registration: .requiresApproval, helperStatus: nil), .awaitApproval)
+        XCTAssertEqual(HelperRepair.forFailures(registration: .notRegistered, helperStatus: nil), .register)
+        XCTAssertEqual(HelperRepair.forFailures(registration: .notFound, helperStatus: nil), .reinstall)
+    }
+
+    func testStatusFromAHelperBefore162CannotRestart() throws {
+        let old = #"{"held":false,"version":"1.6.1","codeHash":"ab"}"#
+        let decoded = try XCTUnwrap(HelperStatus.decode(Data(old.utf8)))
+        XCTAssertNil(decoded.canRestart)
+        let fresh = HelperStatus(held: false, leaseRemaining: nil, sleepDisabled: nil, version: "1.6.2",
+                                 codeHash: nil, lastError: nil)
+        XCTAssertEqual(HelperStatus.decode(fresh.encoded())?.canRestart, true)
+    }
+
+    private func status(canRestart: Bool?) -> HelperStatus {
+        HelperStatus(held: false, leaseRemaining: nil, sleepDisabled: false, version: "1.6.1",
+                     codeHash: nil, lastError: nil, canRestart: canRestart)
+    }
+}
+
+final class HelperRestartXPCTests: XCTestCase {
+    final class Delegate: NSObject, NSXPCListenerDelegate {
+        let engine: HelperEngine
+        let queue = DispatchQueue(label: "test.helper.restart")
+        let exits: (() -> Void)?
+        init(engine: HelperEngine, exits: (() -> Void)?) { self.engine = engine; self.exits = exits }
+        func listener(_ listener: NSXPCListener, shouldAcceptNewConnection c: NSXPCConnection) -> Bool {
+            c.exportedInterface = .stayAwakeHelper()
+            var t: TimeInterval = 0
+            c.exportedObject = HelperConnectionHandler(engine: engine, queue: queue, clock: { t += 1; return t },
+                                                       exitProcess: exits)
+            c.resume()
+            return true
+        }
+    }
+
+    private func run(exits: (() -> Void)?, fx: FakeEffects, holdFirst: Bool) -> String? {
+        let delegate = Delegate(engine: makeEngine(fx), exits: exits)
+        let listener = NSXPCListener.anonymous()
+        listener.delegate = delegate
+        listener.resume()
+        let connection = NSXPCConnection(listenerEndpoint: listener.endpoint)
+        connection.remoteObjectInterface = .stayAwakeHelper()
+        connection.resume()
+        defer { connection.invalidate(); listener.invalidate() }
+        let proxy = connection.remoteObjectProxyWithErrorHandler { XCTFail("xpc error \($0)") } as! HelperXPC
+        if holdFirst {
+            let held = expectation(description: "hold")
+            proxy.hold(leaseSeconds: 60, reason: "arm") { XCTAssertNil($0); held.fulfill() }
+            wait(for: [held], timeout: 5)
+        }
+        let done = expectation(description: "restart")
+        var answer: String?
+        proxy.restartForUpdate { answer = $0; done.fulfill() }
+        wait(for: [done], timeout: 5)
+        return answer
+    }
+
+    func testRestartReleasesThenExits() {
+        let fx = FakeEffects()
+        let exited = expectation(description: "exit")
+        XCTAssertNil(run(exits: { exited.fulfill() }, fx: fx, holdFirst: true))
+        wait(for: [exited], timeout: 5)
+        XCTAssertEqual(fx.runs, [.disableSleepOn, .disableSleepOff], "never exits with sleep left disabled")
+    }
+
+    func testWithoutAnExitHookTheCallIsRefusedAndNothingIsReleased() {
+        let fx = FakeEffects()
+        XCTAssertNotNil(run(exits: nil, fx: fx, holdFirst: true))
+        XCTAssertEqual(fx.runs, [.disableSleepOn])
+    }
+}

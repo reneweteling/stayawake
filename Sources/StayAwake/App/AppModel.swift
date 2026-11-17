@@ -329,34 +329,58 @@ final class AppModel: ObservableObject {
     }
 
     /// Launch check: the running helper must be the one in this bundle (same
-    /// version and same binary). If not, register again, once per launch.
+    /// version and same binary). If not, ask it to restart, once per launch.
+    /// Never unregisters an approved helper: that would cost the approval.
     private func checkHelperVersion() async {
         guard let helper, availability == .ready, !helperReplaced else { return }
-        let verdict: HelperVersionCheck.Verdict = await withCheckedContinuation { c in
-            backendQueue.async { c.resume(returning: helper.versionVerdict()) }
+        let (verdict, status, registration) = await withCheckedContinuation { c in
+            backendQueue.async { c.resume(returning: (helper.versionVerdict(), helper.helperStatus(), helper.registration())) }
         }
-        if case .replace(let why) = verdict {
+        let step = HelperRepair.forVersion(verdict, registration: registration,
+                                           helperCanRestart: status?.canRestart == true)
+        if step != .nothing {
             helperReplaced = true
-            let error = await backendCall { try helper.reinstall() }
-            await refreshAvailability(force: true)
-            if let error {
-                note("Helper update failed (\(why)): \(error)", event: "helper_update_failed")
-            } else if availability != .ready {
-                // macOS wants the approval again: the popover shows the setup step.
-                note("Helper updated (\(why)), waiting for approval in Login Items", event: "helper_updated")
-            } else {
-                // launchd starts the new helper on the first message; ask it.
-                let after: HelperVersionCheck.Verdict = await withCheckedContinuation { c in
-                    backendQueue.async { c.resume(returning: helper.versionVerdict()) }
-                }
-                if case .replace(let still) = after {
-                    note("Helper update did not take (\(still))", event: "helper_update_failed")
-                } else {
-                    note("Helper updated (\(why))", event: "helper_updated")
-                }
-            }
+            await runRepair(step, why: { if case .replace(let why) = verdict { return why }; return "" }(),
+                            event: "helper_updated")
         }
         await refreshHelperInfo()
+    }
+
+    /// Carries out a `HelperRepair` step and logs what happened.
+    private func runRepair(_ step: HelperRepair.Step, why: String, event: String) async {
+        guard let helper else { return }
+        switch step {
+        case .nothing, .awaitApproval:
+            return
+        case .keepUntilReboot(let why):
+            note("Helper differs (\(why)) and is too old to restart itself; it keeps working and is replaced at the next restart",
+                 event: "helper_update_deferred")
+            return
+        case .restartHelper:
+            // The helper releases before it exits; the app holds again if armed.
+            if let error = await backendCall({ try helper.restartForUpdate() }) {
+                note("Helper restart failed (\(why)): \(error)", event: "\(event)_failed")
+            } else {
+                note("Helper restarted with this version (\(why))", event: event)
+            }
+        case .register:
+            if let error = await backendCall({ try helper.register() }) {
+                note("Registering the helper failed: \(error)", event: "\(event)_failed")
+            } else {
+                note("Helper registered (\(why))", event: event)
+            }
+        case .reinstall:
+            if let error = await backendCall({ try helper.reinstall() }) {
+                note("Reinstalling the helper failed: \(error)", event: "\(event)_failed")
+            } else {
+                note("Helper reinstalled (\(why))", event: event)
+            }
+        }
+        await refreshAvailability(force: true)
+        if availability != .ready {
+            // The popover shows the setup card with Open Login Items.
+            note("Sleep control waits for approval in Login Items", event: "helper_needs_approval")
+        }
     }
 
     private func refreshHelperInfo() async {
@@ -626,7 +650,7 @@ final class AppModel: ObservableObject {
     /// Makes the system match what the app wants, every evaluation: holding
     /// means SleepDisabled on, anything else means off (when StayAwake set
     /// it). Failed calls back off (1, 2, 5, then every 15 s) without end;
-    /// after a few in a row the helper is registered again. An armed Mac
+    /// after a few in a row the helper is restarted or registered again. An armed Mac
     /// that cannot be held for 5 minutes stops with the reason.
     private func reconcile(snapshot snap: Snapshot, config cfg: Config) async {
         guard !updating else { return }
@@ -705,20 +729,16 @@ final class AppModel: ObservableObject {
         }
     }
 
-    /// After a few failures in a row: unregister and register the helper, so
-    /// launchd starts a fresh one from this bundle. At most every 10 min.
+    /// After a few failures in a row: restart or register the helper, at most
+    /// every 10 min. An approved helper is never unregistered here.
     private func reregisterIfDue(now: TimeInterval) async {
         guard let helper, retry.shouldReregister(now: now) else { return }
         retry.didReregister(now: now)
-        let error = await backendCall { try helper.reinstall() }
-        await refreshAvailability(force: true)
-        if let error {
-            note("Registering the helper again failed: \(error)", event: "helper_reregister_failed")
-        } else {
-            note(availability == .ready ? "Helper registered again after \(retry.failures) failures"
-                                        : "Helper registered again, waiting for approval in Login Items",
-                 event: "helper_reregistered")
+        let (registration, status) = await withCheckedContinuation { c in
+            backendQueue.async { c.resume(returning: (helper.registration(), helper.helperStatus())) }
         }
+        let step = HelperRepair.forFailures(registration: registration, helperStatus: status)
+        await runRepair(step, why: "\(retry.failures) failures", event: "helper_reregistered")
     }
 
     /// SleepDisabled right after a hold or release, so the popover never

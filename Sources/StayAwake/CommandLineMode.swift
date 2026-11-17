@@ -62,7 +62,7 @@ enum CommandLineMode {
         if let data = try? encoder.encode(status) { print(String(decoding: data, as: UTF8.self)) }
         switch helper.versionVerdict() {
         case .current: print("version: matches this app")
-        case .replace(let why): print("version: differs (\(why)); the app re-registers it on launch")
+        case .replace(let why): print("version: differs (\(why)); the app restarts it on launch, or a helper before 1.6.2 is replaced at the next restart of the Mac")
         case .unknown: print("version: unknown")
         }
         return 0

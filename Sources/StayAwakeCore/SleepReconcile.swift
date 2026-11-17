@@ -34,7 +34,7 @@ public struct HelperRetry: Equatable, Sendable {
     /// Waits after the 1st, 2nd and 3rd failure; then `steadyDelay` for as long as it takes.
     public static let delays: [TimeInterval] = [1, 2, 5]
     public static let steadyDelay: TimeInterval = 15
-    /// After this many failures in a row, unregister and register the helper.
+    /// After this many failures in a row, repair the helper (`HelperRepair.forFailures`).
     public static let reregisterAfterFailures = 4
     /// At most one re-registration per this many seconds.
     public static let reregisterCooldown: TimeInterval = 10 * 60

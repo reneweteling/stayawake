@@ -782,7 +782,7 @@ private struct AdvancedTab: View {
                         }
                         Spacer()
                         Button("Reinstall Helper") { model.reinstallHelper() }
-                            .help("Turn sleep back on, then register the helper again")
+                            .help("Turn sleep back on, then unregister and register the helper. macOS asks for approval in Login Items again")
                         Button("Remove Helper…") { confirmRemove = true }
                             .help("Turn sleep back on, then unregister the helper")
                     }

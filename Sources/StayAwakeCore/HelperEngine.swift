@@ -142,6 +142,10 @@ public final class HelperEngine {
                             version: version, codeHash: codeHash, lastError: lastError)
     }
 
+    public func noteRestart() {
+        effects.log("restart asked for by the app (update), exiting", isError: false)
+    }
+
     /// For refused input, so it shows up in the log as well.
     public func noteRejected(_ what: String) {
         effects.log("refused: \(what)", isError: true)
@@ -195,12 +199,17 @@ public final class HelperConnectionHandler: NSObject, HelperXPC {
     private let clock: () -> TimeInterval
     private var limiter: RateLimiter
 
+    private let exitProcess: (() -> Void)?
+
+    /// `exitProcess` ends the process after `restartForUpdate` replied. Nil
+    /// (tests) refuses the call without releasing.
     public init(engine: HelperEngine, queue: DispatchQueue, limiter: RateLimiter = .helperDefault,
-                clock: @escaping () -> TimeInterval) {
+                clock: @escaping () -> TimeInterval, exitProcess: (() -> Void)? = nil) {
         self.engine = engine
         self.queue = queue
         self.limiter = limiter
         self.clock = clock
+        self.exitProcess = exitProcess
     }
 
     /// Nil when the call may go ahead. Runs on `queue`.
@@ -241,6 +250,17 @@ public final class HelperConnectionHandler: NSObject, HelperXPC {
         queue.async { [self] in
             if admit(.status) != nil { return reply(Data()) }
             reply(engine.status().encoded())
+        }
+    }
+
+    public func restartForUpdate(reply: @escaping (String?) -> Void) {
+        queue.async { [self] in
+            if let refused = admit(.restartForUpdate) { return reply(refused) }
+            guard let exitProcess else { return reply("restart not available") }
+            engine.shutdown()
+            engine.noteRestart()
+            reply(nil)
+            exitProcess()
         }
     }
 }

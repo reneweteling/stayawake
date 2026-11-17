@@ -6,9 +6,15 @@ import StayAwakeCore
 /// Install, check and remove the helper. Only `HelperBackend` has this.
 protocol HelperManaging: AnyObject, Sendable {
     /// SMAppService register. Fine when it ends in "needs approval".
+    /// Never unregisters, so an existing approval stays.
     func register() throws
-    /// Unregister, then register again: launchd starts the helper from this bundle.
+    /// Unregister, then register again. Costs the user's approval: macOS asks
+    /// for it again. Only for a registration macOS cannot find, or on request.
     func reinstall() throws
+    /// Ask the running helper to exit; launchd starts the one in this bundle.
+    /// Returns once the new helper answers with this app's version.
+    func restartForUpdate() throws
+    func registration() -> HelperRegistration
     /// Unregister only. The caller releases first.
     func remove() throws
     func openApprovalSettings()
@@ -106,6 +112,34 @@ final class HelperBackend: PmsetBackend, HelperManaging, @unchecked Sendable {
             if service.status == .requiresApproval || service.status == .enabled { return }
             throw BackendError("could not register the helper: \(error.localizedDescription)")
         }
+    }
+
+    func registration() -> HelperRegistration {
+        switch service.status {
+        case .enabled: return .enabled
+        case .requiresApproval: return .requiresApproval
+        case .notRegistered: return .notRegistered
+        case .notFound: return .notFound
+        @unknown default: return .requiresApproval
+        }
+    }
+
+    /// launchd throttles a KeepAlive job that ran less than 10 s, so wait a bit longer.
+    static let restartWait: TimeInterval = 15
+
+    func restartForUpdate() throws {
+        try requireEnabled()
+        try call { proxy, reply in proxy.restartForUpdate(reply: reply) }
+        dropConnection()
+        let deadline = Date().addingTimeInterval(Self.restartWait)
+        var last = HelperVersionCheck.Verdict.unknown
+        while Date() < deadline {
+            Thread.sleep(forTimeInterval: 0.5)
+            last = versionVerdict()
+            if last == .current { return }
+        }
+        if case .replace(let why) = last { throw BackendError("helper restarted but still differs (\(why))") }
+        throw BackendError("helper did not come back within \(Int(Self.restartWait)) s")
     }
 
     func reinstall() throws {

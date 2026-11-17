@@ -8,6 +8,7 @@ public enum HelperRequest: Equatable, Sendable {
     case heartbeat
     case release(reason: String)
     case status
+    case restartForUpdate
 
     public static let maxReasonLength = 32
     public static let leaseRange = Int(Lease.minSecondsPerHeartbeat)...Int(Lease.maxSecondsPerHeartbeat)
@@ -154,5 +155,71 @@ public enum HelperVersionCheck {
             return .replace("helper binary differs from the one in this app")
         }
         return .current
+    }
+}
+
+/// SMAppService status, without the ServiceManagement import.
+public enum HelperRegistration: Equatable, Sendable {
+    case enabled
+    case requiresApproval
+    case notRegistered
+    /// Also seen before the very first registration.
+    case notFound
+}
+
+/// What the app does to get the helper from this bundle running, or working
+/// again. Unregistering throws away the user's approval in Login Items (the
+/// next register ends in "Operation not permitted" and requiresApproval), so
+/// it is only ever the last resort for a registration macOS cannot find.
+///
+/// macOS on an app update: the daemon plist points at BundleProgram inside
+/// the bundle, so launchd keeps running the old process (its inode is
+/// still open) until it exits, and then starts whatever binary is at that
+/// path. The helper keeps the same identifier and team, so it still meets
+/// the launch constraint launchd recorded at registration.
+public enum HelperRepair {
+    public enum Step: Equatable, Sendable {
+        case nothing
+        /// Ask the running helper to release and exit; launchd starts the new one.
+        case restartHelper
+        /// An older helper that cannot restart itself. It keeps working and is
+        /// replaced at the next restart of the Mac. Never unregister for this.
+        case keepUntilReboot(String)
+        /// register() only. Keeps an approval that already exists.
+        case register
+        /// Unregister, then register. Needs the approval again afterwards.
+        case reinstall
+        /// Waiting for the user in System Settings, Login Items.
+        case awaitApproval
+    }
+
+    /// Launch check: the running helper against this bundle.
+    public static func forVersion(_ verdict: HelperVersionCheck.Verdict, registration: HelperRegistration,
+                                  helperCanRestart: Bool) -> Step {
+        switch registration {
+        case .requiresApproval: return .awaitApproval
+        case .notRegistered: return .register
+        case .notFound: return .reinstall
+        case .enabled:
+            guard case .replace(let why) = verdict else { return .nothing }
+            return helperCanRestart ? .restartHelper : .keepUntilReboot(why)
+        }
+    }
+
+    /// Calls to the helper keep failing (`HelperRetry.shouldReregister`).
+    /// `helperStatus` is nil when the helper does not answer at all.
+    public static func forFailures(registration: HelperRegistration, helperStatus: HelperStatus?) -> Step {
+        switch registration {
+        case .requiresApproval: return .awaitApproval
+        case .notRegistered: return .register
+        case .notFound: return .reinstall
+        case .enabled:
+            guard let status = helperStatus else {
+                // Registered and approved but silent: register again without
+                // unregistering, so launchd loads the job if it went missing.
+                return .register
+            }
+            return status.canRestart == true ? .restartHelper : .nothing
+        }
     }
 }

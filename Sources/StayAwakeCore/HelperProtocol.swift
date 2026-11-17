@@ -41,6 +41,11 @@ public protocol HelperXPC {
     func release(reason: String, reply: @escaping (String?) -> Void)
     /// JSON encoded `HelperStatus`.
     func status(reply: @escaping (Data) -> Void)
+    /// Release, reply, then exit. launchd (KeepAlive) starts the helper again
+    /// from the app bundle, so after an app update the new binary runs
+    /// without unregistering, which would cost the user's approval.
+    /// Helpers before 1.6.2 lack this; `HelperStatus.canRestart` says so.
+    func restartForUpdate(reply: @escaping (String?) -> Void)
 }
 
 public extension NSXPCInterface {
@@ -59,15 +64,18 @@ public struct HelperStatus: Codable, Equatable, Sendable {
     /// The helper's own code directory hash, read at startup.
     public var codeHash: String?
     public var lastError: String?
+    /// The helper answers `restartForUpdate`. Nil from helpers before 1.6.2.
+    public var canRestart: Bool?
 
     public init(held: Bool, leaseRemaining: TimeInterval?, sleepDisabled: Bool?, version: String,
-                codeHash: String?, lastError: String?) {
+                codeHash: String?, lastError: String?, canRestart: Bool? = true) {
         self.held = held
         self.leaseRemaining = leaseRemaining
         self.sleepDisabled = sleepDisabled
         self.version = version
         self.codeHash = codeHash
         self.lastError = lastError
+        self.canRestart = canRestart
     }
 
     public func encoded() -> Data {
