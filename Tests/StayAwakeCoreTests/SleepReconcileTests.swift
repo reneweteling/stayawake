@@ -115,3 +115,57 @@ final class HelperRetryTests: XCTestCase {
         XCTAssertFalse(r.shouldGiveUpHolding(now: 10_000))
     }
 }
+
+final class SleepControlTextTests: XCTestCase {
+    private let restore = "sudo pmset -a disablesleep 0"
+
+    func testFailedCallWhileSleepIsBlockedDoesNotClaimItIsNotBlocked() {
+        // The video: switch on, pmset says Blocked, a heartbeat or reassert failed.
+        let subtitle = SleepControlText.holdingSubtitle(inTrouble: true, sleepDisabled: true)
+        XCTAssertEqual(subtitle, "On. Sleep is blocked, reconnecting to sleep control…")
+        let banner = SleepControlText.banner(phase: .holding, sleepDisabled: true, failures: 1,
+                                             lastError: "x", manualRestore: restore) ?? ""
+        XCTAssertTrue(banner.contains("Sleep is blocked for now"), banner)
+        XCTAssertFalse(banner.contains("may sleep"), banner)
+    }
+
+    func testSleepAllowedWhileHoldingSaysNotBlocked() {
+        XCTAssertEqual(SleepControlText.holdingSubtitle(inTrouble: false, sleepDisabled: false),
+                       "On, but sleep is not blocked yet. Reconnecting to sleep control…")
+        XCTAssertEqual(SleepControlText.holdingSubtitle(inTrouble: true, sleepDisabled: nil),
+                       "On, but sleep is not blocked yet. Reconnecting to sleep control…")
+        let banner = SleepControlText.banner(phase: .holding, sleepDisabled: false, failures: 2,
+                                             lastError: "x", manualRestore: restore) ?? ""
+        XCTAssertTrue(banner.contains("The Mac may sleep until this works."), banner)
+    }
+
+    func testHealthyHoldUsesTheNormalSubtitle() {
+        XCTAssertNil(SleepControlText.holdingSubtitle(inTrouble: false, sleepDisabled: true))
+        XCTAssertNil(SleepControlText.holdingSubtitle(inTrouble: false, sleepDisabled: nil))
+    }
+
+    func testNoBannerWithoutFailures() {
+        XCTAssertNil(SleepControlText.banner(phase: .holding, sleepDisabled: false, failures: 0,
+                                             lastError: nil, manualRestore: restore))
+    }
+
+    func testAfterTheRepairAttemptTheBannerSaysWhatElseHelps() {
+        let early = SleepControlText.banner(phase: .holding, sleepDisabled: true,
+                                            failures: HelperRetry.reregisterAfterFailures - 1,
+                                            lastError: "x", manualRestore: restore) ?? ""
+        let late = SleepControlText.banner(phase: .holding, sleepDisabled: true,
+                                           failures: HelperRetry.reregisterAfterFailures,
+                                           lastError: "x", manualRestore: restore) ?? ""
+        XCTAssertFalse(early.contains("Reinstall Helper"), early)
+        XCTAssertTrue(late.contains("restart the Mac"), late)
+        XCTAssertTrue(late.hasSuffix("Last error: x"), late)
+    }
+
+    func testNotHoldingOnlyReportsWhileSleepIsStillBlocked() {
+        let blocked = SleepControlText.banner(phase: .off, sleepDisabled: true, failures: 1,
+                                              lastError: "x", manualRestore: restore) ?? ""
+        XCTAssertTrue(blocked.contains(restore), blocked)
+        XCTAssertNil(SleepControlText.banner(phase: .off, sleepDisabled: false, failures: 3,
+                                             lastError: "x", manualRestore: restore))
+    }
+}

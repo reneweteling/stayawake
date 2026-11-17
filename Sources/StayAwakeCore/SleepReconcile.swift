@@ -93,3 +93,44 @@ public struct HelperRetry: Equatable, Sendable {
         troubleSince.map { now - $0 >= Self.giveUpHoldingAfter } ?? false
     }
 }
+
+/// What the popover says while sleep control is in trouble. Pure, so the
+/// wording always follows `pmset -g`: a failed call does not mean the Mac
+/// may sleep when SleepDisabled is still on.
+public enum SleepControlText {
+    /// Subtitle under the switch while holding. Nil when the normal
+    /// "Awake for ..." line applies.
+    public static func holdingSubtitle(inTrouble: Bool, sleepDisabled: Bool?) -> String? {
+        if sleepDisabled == true {
+            return inTrouble ? "On. Sleep is blocked, reconnecting to sleep control…" : nil
+        }
+        if inTrouble || sleepDisabled == false {
+            return "On, but sleep is not blocked yet. Reconnecting to sleep control…"
+        }
+        return nil
+    }
+
+    /// The orange banner. Nil when there is nothing to report.
+    /// - Parameters:
+    ///   - failures: failed calls in a row; from `HelperRetry.reregisterAfterFailures`
+    ///     on, the app has tried to repair the helper and says what else helps.
+    ///   - manualRestore: the terminal command that restores sleep by hand.
+    public static func banner(phase: Phase, sleepDisabled: Bool?, failures: Int, lastError: String?,
+                              manualRestore: String) -> String? {
+        guard failures > 0, let error = lastError else { return nil }
+        let hint = failures >= HelperRetry.reregisterAfterFailures
+            ? " If it stays, restart the Mac or use Settings, Advanced, Reinstall Helper (macOS asks for approval again)."
+            : ""
+        if phase == .holding {
+            let minutes = Int(HelperRetry.giveUpHoldingAfter / 60)
+            let state = sleepDisabled == true
+                ? "Sleep is blocked for now; if this keeps failing StayAwake turns off after \(minutes) min."
+                : "The Mac may sleep until this works."
+            return "Reconnecting to sleep control… \(state)\(hint) Last error: \(error)"
+        }
+        if sleepDisabled == true {
+            return "Sleep is still blocked, retrying… If this stays, run \(manualRestore) in a terminal. Last error: \(error)"
+        }
+        return nil
+    }
+}

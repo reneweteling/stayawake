@@ -69,8 +69,9 @@ struct PopoverView: View {
         case .waiting:
             return model.status.tooltip
         case .holding:
-            if model.helperTrouble != nil || model.sleepDisabled == false {
-                return "On, but sleep is not blocked yet. Reconnecting to sleep control…"
+            if let text = SleepControlText.holdingSubtitle(inTrouble: model.helperTrouble != nil,
+                                                           sleepDisabled: model.sleepDisabled) {
+                return text
             }
             var parts: [String] = []
             if let held = model.heldFor { parts.append("Awake for \(Readout.duration(held))") } else { parts.append("Keeping the Mac awake") }

@@ -25,7 +25,10 @@ final class AppModel: ObservableObject {
     @Published private(set) var snapshot = Snapshot()
     @Published private(set) var decision: Decision?
     @Published private(set) var status = MenuBarStatus(kind: .off, symbol: "moon.zzz", tooltip: "StayAwake: off")
-    @Published private(set) var sleepDisabled: Bool?
+    /// SleepDisabled from `pmset -g`. The banner wording depends on it, so it follows every reading.
+    @Published private(set) var sleepDisabled: Bool? {
+        didSet { if sleepDisabled != oldValue { updateTroubleText() } }
+    }
     @Published private(set) var availability: BackendAvailability
     @Published private(set) var heldFor: TimeInterval?
     @Published private(set) var timerLeft: TimeInterval?
@@ -719,14 +722,9 @@ final class AppModel: ObservableObject {
     }
 
     private func updateTroubleText() {
-        guard retry.inTrouble, let error = retry.lastError else { helperTrouble = nil; return }
-        if engine.phase == .holding {
-            helperTrouble = "Reconnecting to sleep control… The Mac may sleep until this works. Last error: \(error)"
-        } else if sleepDisabled == true {
-            helperTrouble = "Sleep is still blocked, retrying… If this stays, run \(BackendFactory.manualRestoreCommand) in a terminal. Last error: \(error)"
-        } else {
-            helperTrouble = nil
-        }
+        helperTrouble = SleepControlText.banner(phase: engine.phase, sleepDisabled: sleepDisabled,
+                                                failures: retry.failures, lastError: retry.lastError,
+                                                manualRestore: BackendFactory.manualRestoreCommand)
     }
 
     /// After a few failures in a row: restart or register the helper, at most
