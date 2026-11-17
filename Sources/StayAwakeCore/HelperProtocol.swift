@@ -59,18 +59,15 @@ public struct HelperStatus: Codable, Equatable, Sendable {
     /// The helper's own code directory hash, read at startup.
     public var codeHash: String?
     public var lastError: String?
-    /// Set while holds are refused after the 12 hour ceiling.
-    public var holdsBlockedUntil: Date?
 
     public init(held: Bool, leaseRemaining: TimeInterval?, sleepDisabled: Bool?, version: String,
-                codeHash: String?, lastError: String?, holdsBlockedUntil: Date? = nil) {
+                codeHash: String?, lastError: String?) {
         self.held = held
         self.leaseRemaining = leaseRemaining
         self.sleepDisabled = sleepDisabled
         self.version = version
         self.codeHash = codeHash
         self.lastError = lastError
-        self.holdsBlockedUntil = holdsBlockedUntil
     }
 
     public func encoded() -> Data {

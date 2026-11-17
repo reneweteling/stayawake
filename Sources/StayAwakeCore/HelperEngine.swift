@@ -15,10 +15,6 @@ public protocol HelperEffects: AnyObject {
 /// The helper's lease logic. Not thread safe: the helper calls it from one
 /// serial queue only.
 public final class HelperEngine {
-    /// After the 12 hour ceiling ends a hold, new holds are refused this long,
-    /// so the Mac really gets to sleep before the app can ask again.
-    public static let ceilingCooldown: TimeInterval = 15 * 60
-
     private let effects: HelperEffects
     private let now: () -> Date
     private let bootSession: () -> String?
@@ -67,11 +63,6 @@ public final class HelperEngine {
         } else if releasePending {
             _ = release(reason: "release-retry")
         }
-        if let until = state.holdsBlockedUntil, now() >= until {
-            state.holdsBlockedUntil = nil
-            state.blockedBootSession = nil
-            persist()
-        }
     }
 
     /// SIGTERM (unregister, shutdown, `kill`): never leave sleep disabled behind.
@@ -84,19 +75,10 @@ public final class HelperEngine {
     public func hold(leaseSeconds: Int, reason: String) -> String? {
         guard let boot = bootSession() else { return fail("no boot session id, hold refused") }
         let t = now()
-        if let until = state.holdsBlockedUntil, state.blockedBootSession == boot, t < until {
-            return fail("12 hour ceiling reached, holds refused until \(ISO8601DateFormatter().string(from: until))")
-        }
         let seconds = TimeInterval(leaseSeconds)
         var next: Lease
         if let current = state.lease {
-            let verdict = current.verdict(now: t, bootSession: boot)
-            if verdict == .ceilingReached {
-                end(verdict)
-                return fail("12 hour ceiling reached, hold refused")
-            }
-            // A hold during a valid lease extends it and keeps its start, so
-            // calling hold again never resets the 12 hour ceiling.
+            // A hold during a valid lease extends it and keeps its start.
             next = current.heartbeat(now: t, bootSession: boot, seconds: seconds)
                 ?? Lease.grant(now: t, bootSession: boot, seconds: seconds)
         } else {
@@ -156,9 +138,8 @@ public final class HelperEngine {
             held = true
             remaining = left
         }
-        let blocked = state.holdsBlockedUntil.flatMap { $0 > t ? $0 : nil }
         return HelperStatus(held: held, leaseRemaining: remaining, sleepDisabled: effects.readSleepDisabled(),
-                            version: version, codeHash: codeHash, lastError: lastError, holdsBlockedUntil: blocked)
+                            version: version, codeHash: codeHash, lastError: lastError)
     }
 
     /// For refused input, so it shows up in the log as well.
@@ -169,10 +150,6 @@ public final class HelperEngine {
     // MARK: - Internals
 
     private func end(_ verdict: LeaseVerdict) {
-        if verdict == .ceilingReached, let boot = bootSession() {
-            state.holdsBlockedUntil = now().addingTimeInterval(Self.ceilingCooldown)
-            state.blockedBootSession = boot
-        }
         _ = release(reason: "lease-\(Self.describe(verdict))")
     }
 
@@ -204,7 +181,6 @@ public final class HelperEngine {
         case .valid: return "valid"
         case .expired: return "expired"
         case .bootSessionMismatch: return "new-boot"
-        case .ceilingReached: return "ceiling"
         case .clockWentBackwards: return "clock-backwards"
         case .noLease: return "no-lease"
         }

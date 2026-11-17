@@ -86,15 +86,12 @@ public struct HelperState: Codable, Equatable, Sendable {
     public var lease: Lease?
     /// Length of one lease period, set by `hold`, used by `heartbeat`.
     public var leaseSeconds: Int
-    /// After the 12 hour ceiling, holds are refused until this time (same boot only).
-    public var holdsBlockedUntil: Date?
-    public var blockedBootSession: String?
+    // State files written before 1.6.2 also carry holdsBlockedUntil and
+    // blockedBootSession from the removed 12 hour ceiling. Decoding ignores them.
 
-    public init(lease: Lease? = nil, leaseSeconds: Int = 60, holdsBlockedUntil: Date? = nil, blockedBootSession: String? = nil) {
+    public init(lease: Lease? = nil, leaseSeconds: Int = 60) {
         self.lease = lease
         self.leaseSeconds = leaseSeconds
-        self.holdsBlockedUntil = holdsBlockedUntil
-        self.blockedBootSession = blockedBootSession
     }
 
     public func encoded() -> Data {
@@ -122,12 +119,7 @@ public enum HelperStartup: Equatable, Sendable {
     public static func decide(stored: Data?, now: Date, bootSession: String?) -> HelperStartup {
         guard let stored else { return .release(reason: "start-no-state", keep: HelperState()) }
         guard let state = HelperState.decode(stored) else { return .release(reason: "start-bad-state", keep: HelperState()) }
-        // A block from the ceiling outlives a helper restart, not a reboot.
-        var keep = HelperState(leaseSeconds: state.leaseSeconds)
-        if let until = state.holdsBlockedUntil, let boot = bootSession, state.blockedBootSession == boot, until > now {
-            keep.holdsBlockedUntil = until
-            keep.blockedBootSession = boot
-        }
+        let keep = HelperState(leaseSeconds: state.leaseSeconds)
         guard let boot = bootSession else { return .release(reason: "start-no-boot-session", keep: keep) }
         guard let lease = state.lease else { return .release(reason: "start-no-lease", keep: keep) }
         switch lease.verdict(now: now, bootSession: boot) {
@@ -135,9 +127,8 @@ public enum HelperStartup: Equatable, Sendable {
             var resumed = keep
             resumed.lease = lease
             return .resume(resumed)
-        case .bootSessionMismatch: return .release(reason: "start-new-boot", keep: HelperState(leaseSeconds: state.leaseSeconds))
+        case .bootSessionMismatch: return .release(reason: "start-new-boot", keep: keep)
         case .expired: return .release(reason: "start-lease-expired", keep: keep)
-        case .ceilingReached: return .release(reason: "start-ceiling", keep: keep)
         case .clockWentBackwards: return .release(reason: "start-clock-backwards", keep: keep)
         case .noLease: return .release(reason: "start-no-lease", keep: keep)
         }

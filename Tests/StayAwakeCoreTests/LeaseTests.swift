@@ -46,32 +46,28 @@ final class LeaseTests: XCTestCase {
         XCTAssertNil(lease.heartbeat(now: t0.addingTimeInterval(1), bootSession: "BOOT-B", seconds: 60))
     }
 
-    func testTwelveHourCeilingHoldsNoMatterHowOftenHeartbeatsArrive() {
+    func testNoCeilingAfterDaysOfHeartbeats() {
         var lease = Lease.grant(now: t0, bootSession: boot, seconds: 60)
         var now = t0
-        var ended: LeaseVerdict?
-        for _ in 0..<(13 * 360) {
+        // Four days of heartbeats every 10 s: the lease never ends by itself.
+        for _ in 0..<(96 * 360) {
             now = now.addingTimeInterval(10)
-            if let next = lease.heartbeat(now: now, bootSession: boot, seconds: 60) { lease = next }
-            else { ended = lease.verdict(now: now, bootSession: boot); break }
+            guard let next = lease.heartbeat(now: now, bootSession: boot, seconds: 60) else {
+                return XCTFail("lease ended after \(now.timeIntervalSince(t0) / 3600) h")
+            }
+            lease = next
         }
-        XCTAssertEqual(ended, .ceilingReached)
-        XCTAssertLessThanOrEqual(now.timeIntervalSince(t0), 12 * 3600 + 10)
+        XCTAssertEqual(lease.verdict(now: now, bootSession: boot), .valid(remaining: 60))
+        XCTAssertEqual(lease.startedAt, t0)
     }
 
-    func testHeartbeatNeverExtendsPastTheCeiling() {
+    func testLeaseStillExpiresAfterALongHoldWhenHeartbeatsStop() {
         var lease = Lease.grant(now: t0, bootSession: boot, seconds: 60)
-        let near = t0.addingTimeInterval(12 * 3600 - 30)
-        lease.expiresAt = near.addingTimeInterval(30)
-        lease.lastSeen = near
-        let extended = lease.heartbeat(now: near, bootSession: boot, seconds: 120)!
-        XCTAssertEqual(extended.expiresAt, t0.addingTimeInterval(12 * 3600))
-    }
-
-    func testCeilingVerdictAtExactlyTwelveHours() {
-        var lease = Lease.grant(now: t0, bootSession: boot, seconds: 120)
-        lease.expiresAt = t0.addingTimeInterval(13 * 3600)
-        XCTAssertEqual(lease.verdict(now: t0.addingTimeInterval(12 * 3600), bootSession: boot), .ceilingReached)
+        let late = t0.addingTimeInterval(86 * 3600)
+        lease.lastSeen = late
+        lease.expiresAt = late.addingTimeInterval(60)
+        XCTAssertTrue(lease.verdict(now: late.addingTimeInterval(59), bootSession: boot).isValid)
+        XCTAssertEqual(lease.verdict(now: late.addingTimeInterval(60), bootSession: boot), .expired)
     }
 
     func testClockJumpingBackwardsVoidsTheLease() {

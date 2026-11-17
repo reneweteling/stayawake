@@ -20,7 +20,7 @@ public enum ConfigRange {
     public static let thermalSustainSeconds: ClosedRange<Int> = 0...600
     public static let batteryHeatingRise: ClosedRange<Double> = 0.5...10
     public static let smoothingSeconds: ClosedRange<Int> = 0...300
-    /// Hard time cap in hours. The helper enforces 12 h per hold regardless.
+    /// Time cap in hours. The only total time limit; the helper has none.
     public static let capHours: ClosedRange<Int> = 1...12
 }
 

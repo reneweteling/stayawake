@@ -2,7 +2,7 @@
 const points: [string, string][] = [
   ['Lease', 'A small root helper only keeps sleep off while the app keeps renewing a lease. Crash, hang or force quit, and sleep is back within 60 s.'],
   ['Reboot', 'The helper turns sleep back on at every boot. A lease from an earlier boot is void.'],
-  ['Ceiling', '12 hours, whatever the app says.'],
+  ['App quits', 'Quit, update or remove the helper, and sleep comes back first.'],
   ['Two commands', 'The helper runs pmset -a disablesleep 1 or 0 and nothing else. No shell, and only the signed StayAwake app can talk to it.'],
 ];
 ---

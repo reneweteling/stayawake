@@ -351,7 +351,6 @@ final class AppModel: ObservableObject {
         } else {
             parts.append("not holding")
         }
-        if let until = status.holdsBlockedUntil { parts.append("holds blocked until \(Readout.clock(until, in: .current))") }
         if let error = status.lastError { parts.append("last error: \(error)") }
         helperInfo = parts.joined(separator: ", ")
     }

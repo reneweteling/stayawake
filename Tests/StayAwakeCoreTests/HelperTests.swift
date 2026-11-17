@@ -172,15 +172,15 @@ final class HelperStartupTests: XCTestCase {
         XCTAssertEqual(reason, "start-no-boot-session")
     }
 
-    func testCeilingBlockSurvivesARestartButNotAReboot() {
-        let until = t0.addingTimeInterval(600)
-        let data = HelperState(lease: nil, leaseSeconds: 60, holdsBlockedUntil: until, blockedBootSession: boot).encoded()
-        guard case .release(_, let same) = HelperStartup.decide(stored: data, now: t0, bootSession: boot),
-              case .release(_, let other) = HelperStartup.decide(stored: data, now: t0, bootSession: "BOOT-B") else {
+    func testOldStateFileWithACeilingBlockStillDecodes() {
+        let lease = Lease.grant(now: t0, bootSession: boot, seconds: 60)
+        var json = String(decoding: HelperState(lease: lease, leaseSeconds: 60).encoded(), as: UTF8.self)
+        json.removeLast()
+        json += #","holdsBlockedUntil":"2026-11-09T09:10:00Z","blockedBootSession":"BOOT-A"}"#
+        guard case .resume(let state) = HelperStartup.decide(stored: Data(json.utf8), now: t0, bootSession: boot) else {
             return XCTFail()
         }
-        XCTAssertEqual(same.holdsBlockedUntil, until)
-        XCTAssertNil(other.holdsBlockedUntil)
+        XCTAssertEqual(state.lease, lease)
     }
 }
 
@@ -255,39 +255,41 @@ final class HelperEngineTests: XCTestCase {
         XCTAssertEqual(fx.runs, [])
     }
 
-    func testHoldAgainDoesNotResetTheCeiling() {
+    func testNoCeilingAfterLongHoldsWithRenewals() {
         let fx = FakeEffects()
         let clock = Clock(t0)
         let engine = makeEngine(fx, clock: clock)
-        _ = engine.hold(leaseSeconds: 120, reason: "rules")
-        for _ in 0..<(12 * 60) {
-            clock.advance(60)
-            _ = engine.hold(leaseSeconds: 120, reason: "reassert")
+        XCTAssertNil(engine.hold(leaseSeconds: 60, reason: "rules"))
+        // 90 hours of heartbeats every 10 s and a reassert every hour.
+        for i in 1...(90 * 360) {
+            clock.advance(10)
+            XCTAssertNil(engine.heartbeat())
+            if i % 360 == 0 { XCTAssertNil(engine.hold(leaseSeconds: 60, reason: "reassert")) }
+            if i % 6 == 0 { engine.tick() }
         }
-        // Twelve hours of holds, then one release and holds blocked.
-        XCTAssertNil(engine.state.lease)
-        XCTAssertEqual(fx.runs.last, .disableSleepOff)
-        XCTAssertEqual(fx.runs.filter { $0 == .disableSleepOff }.count, 1)
-        XCTAssertNotNil(engine.status().holdsBlockedUntil)
+        XCTAssertTrue(engine.status().held)
+        XCTAssertFalse(fx.runs.contains(.disableSleepOff))
+        XCTAssertNil(engine.lastError)
     }
 
-    func testCeilingReleasesAndBlocksHoldsForTheCooldown() {
+    func testLeaseExpiryStillReleasesAfterALongHold() {
         let fx = FakeEffects()
         let clock = Clock(t0)
         let engine = makeEngine(fx, clock: clock)
         _ = engine.hold(leaseSeconds: 60, reason: "rules")
-        while engine.state.lease != nil {
+        for _ in 0..<(30 * 360) {
             clock.advance(10)
             _ = engine.heartbeat()
         }
-        XCTAssertEqual(fx.runs.last, .disableSleepOff)
-        XCTAssertLessThanOrEqual(clock.now.timeIntervalSince(t0), 12 * 3600 + 10)
-        let runsBefore = fx.runs.count
-        XCTAssertNotNil(engine.hold(leaseSeconds: 60, reason: "rules"))
-        XCTAssertEqual(fx.runs.count, runsBefore, "a blocked hold runs nothing")
-        clock.advance(HelperEngine.ceilingCooldown)
+        // The app stops renewing: sleep comes back within the lease.
+        clock.advance(59)
         engine.tick()
-        XCTAssertNil(engine.hold(leaseSeconds: 60, reason: "rules"))
+        XCTAssertEqual(fx.runs, [.disableSleepOn])
+        clock.advance(1)
+        engine.tick()
+        XCTAssertEqual(fx.runs, [.disableSleepOn, .disableSleepOff])
+        XCTAssertFalse(engine.status().held)
+        XCTAssertEqual(fx.sleepDisabled, false)
     }
 
     func testReleaseAlwaysRunsOffAndClearsTheLease() {

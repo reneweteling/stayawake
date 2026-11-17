@@ -19,7 +19,7 @@ Status: early development. The core engine and the app shell exist, the switch i
 | Piece | What |
 |---|---|
 | Keep awake | `pmset -a disablesleep 1`, run by a root helper (SMAppService launchd daemon). Not a sudoers rule, not power assertions, which do not work with the lid closed on battery |
-| Fail-safe | The helper holds a lease the app renews every 10 s. No heartbeat means sleep comes back within 60 s. Every boot restores sleep, and a 12 h ceiling applies no matter what |
+| Fail-safe | The helper holds a lease the app renews every 10 s. No heartbeat means sleep comes back within 60 s. Every boot restores sleep. The helper has no time limit of its own, the app's rules and time cap decide how long |
 | Helper | Runs exactly two argv arrays, `/usr/bin/pmset -a disablesleep 1` and `0`. No shell, no client strings, signed clients only |
 | Sensors | HID thermal sensors for CPU and GPU, `AppleSmartBattery` for the battery, `ProcessInfo.thermalState` as a second opinion. Unreadable sensors count as a trip |
 

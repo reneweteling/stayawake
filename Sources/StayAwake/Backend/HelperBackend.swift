@@ -18,7 +18,7 @@ protocol HelperManaging: AnyObject, Sendable {
 }
 
 /// Release backend: the root launchd daemon (StayAwakeHelper) over XPC.
-/// The daemon owns the lease, the boot reset and the 12 h ceiling; this side
+/// The daemon owns the lease and the boot reset; this side
 /// only registers it and sends hold, heartbeat, release and status.
 final class HelperBackend: PmsetBackend, HelperManaging, @unchecked Sendable {
     let name = "helper"
