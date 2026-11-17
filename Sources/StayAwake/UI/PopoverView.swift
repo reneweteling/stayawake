@@ -15,8 +15,9 @@ struct PopoverView: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
             header
-            if let need = model.setupNeed, !model.isArmed { setupCard(need) }
+            if let need = model.setupNeed { setupCard(need) }
             if model.unplugBanner { banner("Unplugged. StayAwake keeps this Mac awake on battery.", color: .orange) }
+            if model.setupNeed == nil, let trouble = model.helperTrouble { banner(trouble, color: .orange) }
             if let text = model.message { banner(text, color: .red, dismiss: model.dismissMessage) }
             if model.engine.phase == .tripped { trippedBlock }
             Divider()
@@ -68,6 +69,9 @@ struct PopoverView: View {
         case .waiting:
             return model.status.tooltip
         case .holding:
+            if model.helperTrouble != nil || model.sleepDisabled == false {
+                return "On, but sleep is not blocked yet. Reconnecting to sleep control…"
+            }
             var parts: [String] = []
             if let held = model.heldFor { parts.append("Awake for \(Readout.duration(held))") } else { parts.append("Keeping the Mac awake") }
             if let d = model.decision, let limit = Readout.limitingTime(d.margins, timerLeft: model.timerLeft) {
@@ -174,17 +178,24 @@ struct PopoverView: View {
         return onBattery ? "Closed · on battery" : "Closed"
     }
 
+    /// Always what `pmset -g` says, never what the app hoped for.
     private var systemSleepText: String {
         switch model.sleepDisabled {
         case true: return "Blocked"
-        case false: return "Normal"
+        case false: return model.engine.phase == .holding ? "Normal, not blocked yet" : "Normal"
         default: return "Unknown"
         }
     }
 
     private var systemSleepColor: Color {
-        // Disabled while we do not hold means someone set it by hand.
-        model.sleepDisabled == true && model.engine.phase != .holding ? .orange : .primary
+        switch (model.sleepDisabled, model.engine.phase) {
+        // Held by the app but the system lets the Mac sleep.
+        case (false, .holding): return .red
+        // Disabled while we do not hold: leftover, or a release still retrying.
+        case (true, let phase) where phase != .holding: return .orange
+        case (nil, _): return .orange
+        default: return .primary
+        }
     }
 
     // MARK: First to stop it

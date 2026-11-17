@@ -75,13 +75,15 @@ final class HelperBackend: PmsetBackend, HelperManaging, @unchecked Sendable {
     }
 
     /// The helper extends by the lease length given in `hold`.
-    func heartbeat(leaseSeconds: Int) {
-        guard service.status == .enabled else { return }
+    func heartbeat(leaseSeconds: Int) -> String? {
+        guard service.status == .enabled else { return "sleep control is not set up (helper not enabled)" }
         do {
             try call { proxy, reply in proxy.heartbeat(reply: reply) }
+            return nil
         } catch {
-            // The app notices a lost hold through SleepDisabled and asks again.
+            // The app treats the lease as lost and asks for a new hold.
             NSLog("StayAwake: heartbeat failed: %@", String(describing: error))
+            return String(describing: error)
         }
     }
 
@@ -177,6 +179,13 @@ final class HelperBackend: PmsetBackend, HelperManaging, @unchecked Sendable {
                 guard let self, let c else { return }
                 self.dropConnection(c)
             }
+            // The helper restarted (update, crash, launchd): start clean
+            // on the next call instead of reusing a half dead connection.
+            c.interruptionHandler = { [weak self, weak c] in
+                guard let self, let c else { return }
+                self.dropConnection(c)
+                c.invalidate()
+            }
             c.resume()
             connection = c
         }
@@ -196,33 +205,37 @@ final class HelperBackend: PmsetBackend, HelperManaging, @unchecked Sendable {
 
     /// One call with a String? reply: nil is success. Waits at most `callTimeout`.
     private func call(_ send: (HelperXPC, @escaping (String?) -> Void) -> Void) throws {
-        let outcome = Outcome<String?>()
-        let p = try proxy { error in outcome.finish(.failure(BackendError("helper connection failed: \(error.localizedDescription)"))) }
-        send(p) { reply in outcome.finish(.success(reply)) }
-        switch outcome.wait(timeout: Self.callTimeout) {
-        case nil:
-            dropConnection()
-            throw BackendError("helper did not answer within \(Int(Self.callTimeout)) s")
-        case .failure(let error)?:
-            throw error
-        case .success(let refused)?:
-            if let refused { throw BackendError("helper: \(refused)") }
-        }
+        let refused: String? = try roundTrip(send)
+        if let refused { throw BackendError("helper: \(refused)") }
     }
 
     private func callData(_ send: (HelperXPC, @escaping (Data) -> Void) -> Void, result: (Data) -> Void) throws {
-        let outcome = Outcome<Data>()
-        let p = try proxy { error in outcome.finish(.failure(BackendError("helper connection failed: \(error.localizedDescription)"))) }
-        send(p) { data in outcome.finish(.success(data)) }
-        switch outcome.wait(timeout: Self.callTimeout) {
-        case nil:
-            dropConnection()
-            throw BackendError("helper did not answer within \(Int(Self.callTimeout)) s")
-        case .failure(let error)?:
-            throw error
-        case .success(let data)?:
-            result(data)
+        result(try roundTrip(send))
+    }
+
+    /// Sends one message. A broken connection (the helper restarted, the Mac
+    /// woke, launchd swapped the binary) is dropped and the message is sent
+    /// once more on a fresh connection. Every call is safe to repeat: hold
+    /// extends, release is idempotent, status and heartbeat change nothing extra.
+    private func roundTrip<Value>(_ send: (HelperXPC, @escaping (Value) -> Void) -> Void) throws -> Value {
+        var lastError: Error = BackendError("helper connection failed")
+        for attempt in 0..<2 {
+            let outcome = Outcome<Value>()
+            let p = try proxy { error in outcome.finish(.failure(BackendError("helper connection failed: \(error.localizedDescription)"))) }
+            send(p) { value in outcome.finish(.success(value)) }
+            switch outcome.wait(timeout: Self.callTimeout) {
+            case nil:
+                dropConnection()
+                throw BackendError("helper did not answer within \(Int(Self.callTimeout)) s")
+            case .failure(let error)?:
+                dropConnection()
+                lastError = error
+                if attempt == 0 { Thread.sleep(forTimeInterval: 0.2) }
+            case .success(let value)?:
+                return value
+            }
         }
+        throw lastError
     }
 }
 

@@ -59,8 +59,8 @@ final class SudoersPmsetBackend: PmsetBackend, @unchecked Sendable {
         startWatchdog(leaseSeconds: leaseSeconds)
     }
 
-    func heartbeat(leaseSeconds: Int) {
-        try? writeHeartbeat()
+    func heartbeat(leaseSeconds: Int) -> String? {
+        do { try writeHeartbeat(); return nil } catch { return String(describing: error) }
     }
 
     func release(reason: String) throws {

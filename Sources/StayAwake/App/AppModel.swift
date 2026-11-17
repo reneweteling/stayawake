@@ -35,6 +35,9 @@ final class AppModel: ObservableObject {
     @Published private(set) var unplugBanner = false
     /// One line about the helper for Settings, Advanced (version, lease).
     @Published private(set) var helperInfo: String?
+    /// Set while sleep control keeps failing and the app retries. Clears
+    /// itself once the system is where the app wants it.
+    @Published private(set) var helperTrouble: String?
     @Published var armDuration: ArmDuration
     @Published var popoverOpen = false {
         didSet {
@@ -66,6 +69,13 @@ final class AppModel: ObservableObject {
     private var lastSampleLog: TimeInterval?
     private var lastSnapshotForEvents: Snapshot?
     private var helperReplaced = false
+    /// Backoff and escalation while hold or release calls fail.
+    private var retry = HelperRetry()
+    /// A hold was asked for since the last confirmed release: a SleepDisabled
+    /// still on outside Holding is ours to clear.
+    private var releaseOwed = false
+    /// A heartbeat failed: the lease may run out, so hold again.
+    private var leaseLost = false
     /// Set once an update is about to replace the app: no more arming.
     private var updating = false
 
@@ -226,6 +236,8 @@ final class AppModel: ObservableObject {
         enqueue { [self] in
             engine = RuleEngine.disarm(engine).state
             headsUpSent = []
+            // Whatever set it, the user wants it off: keep trying until it is.
+            releaseOwed = true
             if let error = await releaseOnce(reason: "restore") {
                 message = "Could not restore sleep: \(error). Run \(BackendFactory.manualRestoreCommand) in a terminal."
                 note("Restore sleep failed: \(error)", event: "restore_failed")
@@ -326,11 +338,22 @@ final class AppModel: ObservableObject {
         if case .replace(let why) = verdict {
             helperReplaced = true
             let error = await backendCall { try helper.reinstall() }
-            await refreshAvailability()
+            await refreshAvailability(force: true)
             if let error {
                 note("Helper update failed (\(why)): \(error)", event: "helper_update_failed")
+            } else if availability != .ready {
+                // macOS wants the approval again: the popover shows the setup step.
+                note("Helper updated (\(why)), waiting for approval in Login Items", event: "helper_updated")
             } else {
-                note("Helper updated (\(why))", event: "helper_updated")
+                // launchd starts the new helper on the first message; ask it.
+                let after: HelperVersionCheck.Verdict = await withCheckedContinuation { c in
+                    backendQueue.async { c.resume(returning: helper.versionVerdict()) }
+                }
+                if case .replace(let still) = after {
+                    note("Helper update did not take (\(still))", event: "helper_update_failed")
+                } else {
+                    note("Helper updated (\(why))", event: "helper_updated")
+                }
             }
         }
         await refreshHelperInfo()
@@ -369,6 +392,8 @@ final class AppModel: ObservableObject {
     private func performArm(manual: Bool) async {
         guard !updating else { return }
         message = nil
+        // A new arm starts fresh: first try right away, a new give-up clock.
+        if retry.inTrouble { retry.succeeded(); updateTroubleText() }
         await refreshAvailability()
         // First arm installs the helper. Whatever is still missing after
         // that shows once in the popover, with its button.
@@ -461,19 +486,23 @@ final class AppModel: ObservableObject {
 
         switch d.action {
         case .hold:
+            releaseOwed = true
             if let error = await backendCall({ [backend, lease = cfg.leaseSeconds] in try backend.hold(leaseSeconds: lease, reason: "rules") }) {
-                // Nothing was held, so the engine must not think it is.
-                engine = RuleEngine.disarm(engine).state
-                message = "Could not keep this Mac awake: \(error)"
-                note("Hold failed: \(error)", event: "hold_failed", snapshot: snap)
+                // Stay armed and keep trying (see `reconcile`). The popover says
+                // so, and gives up with a reason only after a long time.
+                helperFailed(error, event: "hold_failed", snapshot: snap)
                 await refreshAvailability(force: true)
             } else {
                 heldByUs = true
+                leaseLost = false
+                helperWorks()
                 if before != .holding { note("Holding since \(clockNow())", event: "hold", snapshot: snap) }
             }
+            sleepDisabled = await readSleepDisabled() ?? sleepDisabled
         case .release:
             await releaseWithRetries(reason: d.trip != nil ? "trip" : (d.timerEnded ? "timer" : "rules"))
             if d.trip != nil || d.timerEnded { scheduleSleepNowFallback() }
+            sleepDisabled = await readSleepDisabled() ?? sleepDisabled
         case .none:
             break
         }
@@ -482,16 +511,7 @@ final class AppModel: ObservableObject {
         if d.alerts.contains(.unpluggedWhileHolding) { handleUnplug(snapshot: snap) }
         if d.alerts.contains(.rearmedOnPower) { handleRearmedOnPower(snapshot: snap, config: cfg) }
 
-        // The UI shows what the system says. If we hold but the system says
-        // sleep is allowed (a watchdog fired, a wake), put the hold back.
-        if engine.phase == .holding, d.action != .hold, sleepDisabled == false, heldByUs {
-            if let error = await backendCall({ [backend, lease = cfg.leaseSeconds] in try backend.hold(leaseSeconds: lease, reason: "reassert") }) {
-                message = "SleepDisabled went off and could not be set again: \(error)"
-                note("Reassert failed: \(error)", event: "reassert_failed", snapshot: snap)
-            } else {
-                note("SleepDisabled was off while holding, set it again", event: "reassert", snapshot: snap)
-            }
-        }
+        if d.action == .none { await reconcile(snapshot: snap, config: cfg) }
 
         if engine.phase != .tripped { trippedAt = nil }
         handleHeadsUp(d, config: cfg)
@@ -583,17 +603,137 @@ final class AppModel: ObservableObject {
     }
 
     /// Spec section 5: ask for disablesleep 0, retry 3 times, 1 s apart.
+    /// After that `reconcile` keeps trying with backoff until it works.
     private func releaseWithRetries(reason: String) async {
         var last: String?
         for attempt in 0..<3 {
             if attempt > 0 { try? await Task.sleep(for: .seconds(1)) }
             last = await releaseOnce(reason: reason)
-            if last == nil { return }
+            if last == nil {
+                helperWorks()
+                return
+            }
         }
-        let text = "StayAwake could not restore sleep (\(last ?? "unknown")). Run \(BackendFactory.manualRestoreCommand) in a terminal."
-        message = text
-        record(entry("release_failed", snapshot: snapshot).with(message: text))
-        NotificationManager.shared.notifyArmed(text)
+        let first = !retry.inTrouble
+        helperFailed(last ?? "unknown", event: "release_failed", snapshot: snapshot)
+        if first {
+            NotificationManager.shared.notifyArmed("StayAwake could not restore sleep yet and keeps trying. If it stays, run \(BackendFactory.manualRestoreCommand) in a terminal.")
+        }
+    }
+
+    // MARK: - Self-healing
+
+    /// Makes the system match what the app wants, every evaluation: holding
+    /// means SleepDisabled on, anything else means off (when StayAwake set
+    /// it). Failed calls back off (1, 2, 5, then every 15 s) without end;
+    /// after a few in a row the helper is registered again. An armed Mac
+    /// that cannot be held for 5 minutes stops with the reason.
+    private func reconcile(snapshot snap: Snapshot, config cfg: Config) async {
+        guard !updating else { return }
+        let now = makeNow().monotonic
+        if engine.phase == .holding, retry.inTrouble, retry.shouldGiveUpHolding(now: now) {
+            let why = retry.lastError ?? "unknown error"
+            engine = RuleEngine.disarm(engine).state
+            headsUpSent = []
+            leaseLost = false
+            let minutes = Int(HelperRetry.giveUpHoldingAfter / 60)
+            message = "Could not keep this Mac awake: sleep control failed for \(minutes) min (\(why)). StayAwake is off."
+            note("Stopped, sleep control failed for \(minutes) min: \(why)", event: "hold_gave_up", snapshot: snap)
+        }
+        let need = SleepReconcile.need(phase: engine.phase, sleepDisabled: sleepDisabled, leaseLost: leaseLost,
+                                       releaseOwed: releaseOwed, clearLeftover: settings.clearLeftoverOnLaunch)
+        switch need {
+        case .nothing:
+            if engine.phase != .holding, sleepDisabled == false { releaseOwed = false }
+            helperWorks()
+        case .hold:
+            guard retry.mayAttempt(now: now) else { break }
+            await reregisterIfDue(now: now)
+            let why = leaseLost ? "lease was lost" : "SleepDisabled was off"
+            if let error = await backendCall({ [backend, lease = cfg.leaseSeconds] in try backend.hold(leaseSeconds: lease, reason: "reassert") }) {
+                helperFailed(error, event: "reassert_failed", snapshot: snap)
+            } else {
+                heldByUs = true
+                leaseLost = false
+                helperWorks()
+                note("Holding again (\(why))", event: "reassert", snapshot: snap)
+            }
+            sleepDisabled = await readSleepDisabled() ?? sleepDisabled
+        case .release:
+            guard retry.mayAttempt(now: now) else { break }
+            await reregisterIfDue(now: now)
+            if let error = await releaseOnce(reason: "reconcile") {
+                helperFailed(error, event: "release_failed", snapshot: snap)
+            } else {
+                releaseOwed = false
+                helperWorks()
+                note("Sleep restored, SleepDisabled was still on while not holding", event: "release_reconciled", snapshot: snap)
+            }
+            sleepDisabled = await readSleepDisabled() ?? sleepDisabled
+        }
+        updateTroubleText()
+    }
+
+    private func helperFailed(_ error: String, event: String, snapshot snap: Snapshot) {
+        retry.failed(error, now: makeNow().monotonic)
+        // Log the first few and then every 20th, so a long outage does not flood the log.
+        if retry.failures <= 5 || retry.failures % 20 == 0 {
+            var e = entry(event, snapshot: snap).with(message: error)
+            e.value = Double(retry.failures)
+            record(e)
+        }
+        lastEvent = "\(clockNow()) · Sleep control failed, retrying: \(error)"
+        updateTroubleText()
+    }
+
+    private func helperWorks() {
+        if retry.inTrouble {
+            note("Sleep control works again after \(retry.failures) failed attempt\(retry.failures == 1 ? "" : "s")", event: "helper_recovered")
+        }
+        retry.succeeded()
+        updateTroubleText()
+    }
+
+    private func updateTroubleText() {
+        guard retry.inTrouble, let error = retry.lastError else { helperTrouble = nil; return }
+        if engine.phase == .holding {
+            helperTrouble = "Reconnecting to sleep control… The Mac may sleep until this works. Last error: \(error)"
+        } else if sleepDisabled == true {
+            helperTrouble = "Sleep is still blocked, retrying… If this stays, run \(BackendFactory.manualRestoreCommand) in a terminal. Last error: \(error)"
+        } else {
+            helperTrouble = nil
+        }
+    }
+
+    /// After a few failures in a row: unregister and register the helper, so
+    /// launchd starts a fresh one from this bundle. At most every 10 min.
+    private func reregisterIfDue(now: TimeInterval) async {
+        guard let helper, retry.shouldReregister(now: now) else { return }
+        retry.didReregister(now: now)
+        let error = await backendCall { try helper.reinstall() }
+        await refreshAvailability(force: true)
+        if let error {
+            note("Registering the helper again failed: \(error)", event: "helper_reregister_failed")
+        } else {
+            note(availability == .ready ? "Helper registered again after \(retry.failures) failures"
+                                        : "Helper registered again, waiting for approval in Login Items",
+                 event: "helper_reregistered")
+        }
+    }
+
+    /// SleepDisabled right after a hold or release, so the popover never
+    /// shows a value from before the call.
+    private func readSleepDisabled() async -> Bool? {
+        await withCheckedContinuation { c in
+            sensorQueue.async { c.resume(returning: ReadOnlyCommand.pmsetG().map(PmsetParser.parse)?.sleepDisabled) }
+        }
+    }
+
+    private func heartbeatFailed(_ error: String) {
+        guard engine.phase == .holding else { return }
+        if !leaseLost { NSLog("StayAwake: heartbeat failed, holding again: %@", error) }
+        leaseLost = true
+        requestEvaluation("heartbeat-failed")
     }
 
     /// A1: with the lid closed the Mac should sleep by itself once the hold is
@@ -621,7 +761,7 @@ final class AppModel: ObservableObject {
         // The approval in System Settings happened outside the app.
         if wasSetup, value == .ready, backend is HelperManaging {
             note("Helper ready", event: "helper_ready")
-            await refreshHelperInfo()
+            await checkHelperVersion()
         }
     }
 
@@ -630,16 +770,19 @@ final class AppModel: ObservableObject {
     private func startHeartbeat() {
         guard heartbeatTimer == nil else { return }
         let timer = Timer(timeInterval: 10, repeats: true) { [weak self] _ in
-            MainActor.assumeIsolated {
-                guard let self else { return }
-                let lease = self.config.leaseSeconds
-                self.backendQueue.async { [backend = self.backend] in backend.heartbeat(leaseSeconds: lease) }
-            }
+            MainActor.assumeIsolated { self?.sendHeartbeat() }
         }
         RunLoop.main.add(timer, forMode: .common)
         heartbeatTimer = timer
+        sendHeartbeat()
+    }
+
+    private func sendHeartbeat() {
         let lease = config.leaseSeconds
-        backendQueue.async { [backend] in backend.heartbeat(leaseSeconds: lease) }
+        backendQueue.async { [weak self, backend] in
+            guard let error = backend.heartbeat(leaseSeconds: lease) else { return }
+            DispatchQueue.main.async { MainActor.assumeIsolated { self?.heartbeatFailed(error) } }
+        }
     }
 
     private func stopHeartbeat() {
@@ -652,8 +795,10 @@ final class AppModel: ObservableObject {
     private func reschedule() {
         evaluationTimer?.invalidate()
         let cfg = config
-        let seconds: Int = popoverOpen ? 5 : (engine.phase == .holding ? cfg.holdingIntervalSeconds : cfg.offIntervalSeconds)
-        let timer = Timer(timeInterval: Double(seconds), repeats: false) { [weak self] _ in
+        var seconds = Double(popoverOpen ? 5 : (engine.phase == .holding ? cfg.holdingIntervalSeconds : cfg.offIntervalSeconds))
+        // A pending retry comes sooner.
+        if let wait = retry.wait(now: makeNow().monotonic) { seconds = min(seconds, max(1, wait)) }
+        let timer = Timer(timeInterval: seconds, repeats: false) { [weak self] _ in
             MainActor.assumeIsolated { self?.requestEvaluation("timer") }
         }
         RunLoop.main.add(timer, forMode: .common)

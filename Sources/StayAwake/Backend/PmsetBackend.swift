@@ -48,8 +48,9 @@ protocol PmsetBackend: AnyObject, Sendable {
     func availability() -> BackendAvailability
     /// `pmset -a disablesleep 1` and start whatever fail-safe the backend has.
     func hold(leaseSeconds: Int, reason: String) throws
-    /// Called every 10 s while holding. Cheap, never throws.
-    func heartbeat(leaseSeconds: Int)
+    /// Called every 10 s while holding. Returns the error text when the
+    /// lease may not have been renewed, nil when it was (or nothing to renew).
+    func heartbeat(leaseSeconds: Int) -> String?
     /// `pmset -a disablesleep 0` and stop the fail-safe.
     func release(reason: String) throws
 }
@@ -62,7 +63,7 @@ final class NullBackend: PmsetBackend {
                                         detail: "This debug build runs with STAYAWAKE_BACKEND=none.", action: .none)
     func availability() -> BackendAvailability { .setupRequired(Self.need) }
     func hold(leaseSeconds: Int, reason: String) throws { throw BackendError(Self.need.title) }
-    func heartbeat(leaseSeconds: Int) {}
+    func heartbeat(leaseSeconds: Int) -> String? { nil }
     func release(reason: String) throws { throw BackendError(Self.need.title) }
 }
 

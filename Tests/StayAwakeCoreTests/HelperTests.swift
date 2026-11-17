@@ -381,6 +381,19 @@ final class HelperVersionCheckTests: XCTestCase {
         }
     }
 
+    func testAnyVersionChangeIsReplacedEvenWithTheSameBinary() {
+        // Downgrade, or a release that only bumped the version.
+        guard case .replace = HelperVersionCheck.verdict(helperVersion: "1.7.0", helperCodeHash: "aa", appVersion: "1.6.2", bundledCodeHash: "aa") else {
+            return XCTFail()
+        }
+    }
+
+    func testOnlyTheHashChangedIsReplaced() {
+        // A release that rebuilt the helper but kept the version string.
+        let v = HelperVersionCheck.verdict(helperVersion: "1.6.2", helperCodeHash: "0A1B", appVersion: "1.6.2", bundledCodeHash: "0a1c")
+        XCTAssertEqual(v, .replace("helper binary differs from the one in this app"))
+    }
+
     func testNoAnswerIsUnknownNotAReinstallLoop() {
         XCTAssertEqual(HelperVersionCheck.verdict(helperVersion: nil, helperCodeHash: nil, appVersion: "1.4.0", bundledCodeHash: "aa"), .unknown)
     }
