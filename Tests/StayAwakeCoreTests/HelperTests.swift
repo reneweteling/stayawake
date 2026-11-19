@@ -650,3 +650,15 @@ final class HelperRestartXPCTests: XCTestCase {
         XCTAssertEqual(fx.runs, [.disableSleepOn])
     }
 }
+
+final class HelperTrustTests: XCTestCase {
+    /// A stale helper after an update fails the app's signature check. Only
+    /// calls that make the Mac safer or swap in the new helper may skip it.
+    func testOnlySafeCallsMaySkipTheSignatureCheck() {
+        XCTAssertTrue(HelperTrust.mayCallUnverified(.release(reason: "update")))
+        XCTAssertTrue(HelperTrust.mayCallUnverified(.status))
+        XCTAssertTrue(HelperTrust.mayCallUnverified(.restartForUpdate))
+        XCTAssertFalse(HelperTrust.mayCallUnverified(.hold(leaseSeconds: 60, reason: "rules")))
+        XCTAssertFalse(HelperTrust.mayCallUnverified(.heartbeat))
+    }
+}

@@ -132,8 +132,17 @@ final class AppModel: ObservableObject {
             snapshot = reading.snapshot
             await refreshAvailability()
             await checkHelperVersion()
+            // An update went ahead without confirming that sleep was back.
+            let owedFromUpdate = restoreSleepAfterUpdate
+            if owedFromUpdate {
+                releaseOwed = true
+                // The helper restart above may have released already.
+                sleepDisabled = await readSleepDisabled() ?? sleepDisabled
+                if sleepDisabled == false { restoreSleepAfterUpdate = false }
+            }
             // Q11: StayAwake owns the flag, so a leftover one is cleared.
-            if settings.clearLeftoverOnLaunch, sleepDisabled == true, availability == .ready {
+            // If this fails, reconcile keeps trying while releaseOwed is set.
+            if settings.clearLeftoverOnLaunch || owedFromUpdate, sleepDisabled == true, availability == .ready {
                 let error = await backendCall { [backend] in try backend.release(reason: "leftover") }
                 if let error {
                     note("Could not clear a leftover SleepDisabled: \(error)", event: "leftover_failed")
@@ -166,33 +175,56 @@ final class AppModel: ObservableObject {
 
     /// The updater calls this right before it swaps the app. Disarms, stops
     /// the heartbeat and releases, then reads `pmset -g` to confirm sleep is
-    /// back. Throws when it is not, so the update never leaves sleep off.
+    /// back. It never stops the update (see `UpdateSleepCheck`): with sleep
+    /// still off it retries once on a fresh connection, then lets the update
+    /// go ahead and leaves a note so the new version releases on launch.
     func prepareForUpdate() async throws {
-        var failure: String?
         await enqueue { [self] in
             updating = true
             engine = RuleEngine.disarm(engine).state
             headsUpSent = []
             stopHeartbeat()
-            if availability == .ready || heldByUs {
-                if let error = await releaseOnce(reason: "update") { failure = "Could not restore sleep: \(error)" }
-            }
-            if failure == nil {
+            // Whatever happens below, SleepDisabled is ours to clear now.
+            releaseOwed = true
+            var attempts = 0
+            var lastError: String?
+            while true {
+                if attempts > 0 { try? await Task.sleep(for: .seconds(1)) }
+                attempts += 1
+                lastError = nil
+                if availability == .ready || heldByUs || sleepDisabled != false {
+                    lastError = await releaseOnce(reason: "update")
+                }
                 let reading = await sample()
                 sleepDisabled = reading.pmset?.sleepDisabled
-                if sleepDisabled == true {
-                    failure = "Sleep is still disabled. Run \(BackendFactory.manualRestoreCommand) and try again."
+                switch UpdateSleepCheck.verdict(sleepDisabled: sleepDisabled, released: lastError == nil, attempts: attempts) {
+                case .proceed:
+                    restoreSleepAfterUpdate = false
+                    if let lastError {
+                        note("Installing an update, sleep is enabled (the helper call failed: \(lastError))", event: "update_install")
+                    } else {
+                        note("Installing an update, sleep restored", event: "update_install")
+                    }
+                case .retry:
+                    continue
+                case .proceedRestoreOnLaunch:
+                    restoreSleepAfterUpdate = true
+                    let why = lastError ?? (sleepDisabled == true ? "SleepDisabled is still on" : "pmset could not be read")
+                    note("Installing an update, sleep not restored yet (\(why)). The helper lets it go within a minute and the new version restores it on launch.",
+                         event: "update_install_unrestored")
                 }
-            }
-            if let failure {
-                updating = false
-                note("Update stopped: \(failure)", event: "update_blocked")
-            } else {
-                note("Installing an update, sleep restored", event: "update_install")
+                break
             }
             await finishEvaluation(reason: "update")
         }.value
-        if let failure { throw SelfUpdater.Failure(message: failure) }
+    }
+
+    /// Set when an update went ahead with sleep possibly still disabled. The
+    /// next launch (the new version) releases, whatever the leftover setting
+    /// says, and clears it once `pmset -g` shows sleep enabled.
+    private var restoreSleepAfterUpdate: Bool {
+        get { UserDefaults.standard.bool(forKey: "restoreSleepAfterUpdate") }
+        set { UserDefaults.standard.set(newValue, forKey: "restoreSleepAfterUpdate") }
     }
 
     /// Any failed install: log the reason and make arming work again. Queued,
@@ -671,7 +703,10 @@ final class AppModel: ObservableObject {
                                        releaseOwed: releaseOwed, clearLeftover: settings.clearLeftoverOnLaunch)
         switch need {
         case .nothing:
-            if engine.phase != .holding, sleepDisabled == false { releaseOwed = false }
+            if engine.phase != .holding, sleepDisabled == false {
+                releaseOwed = false
+                if restoreSleepAfterUpdate { restoreSleepAfterUpdate = false }
+            }
             helperWorks()
         case .hold:
             guard retry.mayAttempt(now: now) else { break }

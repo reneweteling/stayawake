@@ -124,3 +124,36 @@ public enum SwapScript {
         ["-c", source, String(pid), current, staged, work, log, String(waitLimit), opener]
     }
 }
+
+/// Whether an update may replace the app, after the model disarmed and asked
+/// the helper to release. `pmset -g` is the truth, not the helper's answer.
+///
+/// An update never stops because sleep could not be restored: a broken
+/// helper is often what the update fixes, and staying on the old version
+/// would keep the user stuck. With sleep still off the helper's lease runs
+/// out on its own (no more heartbeats), and the new version releases on
+/// launch (`restoreOnLaunch`).
+public enum UpdateSleepCheck {
+    public enum Verdict: Equatable, Sendable {
+        /// Sleep is back, swap.
+        case proceed
+        /// Ask the helper again, on a fresh connection.
+        case retry
+        /// Swap anyway; the new version restores sleep when it starts.
+        case proceedRestoreOnLaunch
+    }
+
+    /// Release attempts before the update goes ahead regardless.
+    public static let maxAttempts = 2
+
+    /// - Parameters:
+    ///   - sleepDisabled: SleepDisabled from `pmset -g` after the release; nil when unreadable.
+    ///   - released: the helper confirmed the last release.
+    ///   - attempts: release attempts made so far.
+    public static func verdict(sleepDisabled: Bool?, released: Bool, attempts: Int) -> Verdict {
+        if sleepDisabled == false { return .proceed }
+        // pmset unreadable: trust a confirmed release, as before.
+        if sleepDisabled == nil, released { return .proceed }
+        return attempts < maxAttempts ? .retry : .proceedRestoreOnLaunch
+    }
+}

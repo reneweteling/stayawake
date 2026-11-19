@@ -28,7 +28,7 @@ final class UpdateChecker: ObservableObject {
     }
     /// Asked before an automatic install: armed, tripped or a window open.
     var isBusy: () -> Bool = { true }
-    /// Disarms and releases sleep before the bundles swap. Throws to stop the update.
+    /// Disarms and releases sleep before the bundles swap. Throwing stops the update.
     var prepareForInstall: @MainActor () async throws -> Void = {}
     /// Any failed install: logs `update_failed` with the reason and makes
     /// arming work again.

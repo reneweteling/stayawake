@@ -65,11 +65,11 @@ StayAwake checks GitHub for a new release on launch and then once a day. Setting
 |---|---|
 | Download | `StayAwake.dmg` from this repo's release, SHA-256 checked against GitHub's asset digest |
 | Verify | Strict signature of the app and its helper (team `ND82KXRD2Q`), Gatekeeper, version matches the release and is newer |
-| Restore sleep | Disarm, release, then `pmset -g` must show sleep enabled. Otherwise the update stops |
+| Restore sleep | Disarm, release, then check `pmset -g`. If sleep is still disabled after a retry, the update goes ahead anyway: the helper lease runs out within a minute and the new version releases on launch |
 | Swap | Quit, replace the bundle in place, open the new one |
-| Helper | On launch the new app sees the older running helper and registers it again from the new bundle |
+| Helper | On launch the new app sees the older running helper and asks it to restart, so launchd starts the helper from the new bundle |
 
-The re-registration should keep the existing approval, since the bundle id and team stay the same. If macOS does ask again, the popover shows the usual approval step, and nothing is held while it waits. Builds signed ad hoc (`scripts/build.sh` without an identity) don't update themselves.
+Restarting the helper keeps the existing approval, nothing is unregistered. If macOS does ask again, the popover shows the usual approval step, and nothing is held while it waits. Builds signed ad hoc (`scripts/build.sh` without an identity) don't update themselves.
 
 ## Command line
 

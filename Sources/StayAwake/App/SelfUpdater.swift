@@ -13,7 +13,7 @@ import StayAwakeCore
 /// StayAwake's identifier and team, the helper inside is signed the same way,
 /// Gatekeeper accepts it (so it is notarized) and its version is the one the
 /// release promised. Then `beforeSwap` runs: the model disarms and releases
-/// sleep, and the update stops if that fails.
+/// sleep. A release that fails does not stop the update (`UpdateSleepCheck`).
 enum SelfUpdater {
     struct Failure: LocalizedError {
         let message: String
@@ -81,8 +81,9 @@ enum SelfUpdater {
         }
 
         progress(.restoreSleep)
-        // Never swap with sleep disabled: the model disarms, releases and
-        // throws when it cannot confirm that sleep is back.
+        // The model disarms and releases. If sleep is not back it swaps
+        // anyway and the new version releases on launch: a broken helper must
+        // not keep the user on the version that broke it.
         try await withUpdateTimeout(.restoreSleep) { try await beforeSwap() }
 
         progress(.restart)

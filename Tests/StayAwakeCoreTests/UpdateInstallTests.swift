@@ -143,3 +143,23 @@ final class UpdateInstallTests: XCTestCase {
         XCTAssertEqual(logLines(l).last?["event"], "update_failed")
     }
 }
+
+final class UpdateSleepCheckTests: XCTestCase {
+    func testSleepBackProceedsEvenWhenTheHelperCallFailed() {
+        XCTAssertEqual(UpdateSleepCheck.verdict(sleepDisabled: false, released: true, attempts: 1), .proceed)
+        XCTAssertEqual(UpdateSleepCheck.verdict(sleepDisabled: false, released: false, attempts: 1), .proceed)
+    }
+
+    func testUnreadablePmsetTrustsAConfirmedRelease() {
+        XCTAssertEqual(UpdateSleepCheck.verdict(sleepDisabled: nil, released: true, attempts: 1), .proceed)
+        XCTAssertEqual(UpdateSleepCheck.verdict(sleepDisabled: nil, released: false, attempts: 1), .retry)
+    }
+
+    func testSleepStillDisabledRetriesOnceThenNeverBlocksTheUpdate() {
+        XCTAssertEqual(UpdateSleepCheck.verdict(sleepDisabled: true, released: false, attempts: 1), .retry)
+        XCTAssertEqual(UpdateSleepCheck.verdict(sleepDisabled: true, released: true, attempts: 1), .retry)
+        let last = UpdateSleepCheck.maxAttempts
+        XCTAssertEqual(UpdateSleepCheck.verdict(sleepDisabled: true, released: false, attempts: last), .proceedRestoreOnLaunch)
+        XCTAssertEqual(UpdateSleepCheck.verdict(sleepDisabled: nil, released: false, attempts: last), .proceedRestoreOnLaunch)
+    }
+}

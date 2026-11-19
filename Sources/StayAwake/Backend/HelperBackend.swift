@@ -77,14 +77,16 @@ final class HelperBackend: PmsetBackend, HelperManaging, @unchecked Sendable {
 
     func hold(leaseSeconds: Int, reason: String) throws {
         try requireEnabled()
-        try call { proxy, reply in proxy.hold(leaseSeconds: leaseSeconds, reason: reason, reply: reply) }
+        try call(.hold(leaseSeconds: leaseSeconds, reason: reason)) { proxy, reply in
+            proxy.hold(leaseSeconds: leaseSeconds, reason: reason, reply: reply)
+        }
     }
 
     /// The helper extends by the lease length given in `hold`.
     func heartbeat(leaseSeconds: Int) -> String? {
         guard service.status == .enabled else { return "sleep control is not set up (helper not enabled)" }
         do {
-            try call { proxy, reply in proxy.heartbeat(reply: reply) }
+            try call(.heartbeat) { proxy, reply in proxy.heartbeat(reply: reply) }
             return nil
         } catch {
             // The app treats the lease as lost and asks for a new hold.
@@ -95,7 +97,7 @@ final class HelperBackend: PmsetBackend, HelperManaging, @unchecked Sendable {
 
     func release(reason: String) throws {
         try requireEnabled()
-        try call { proxy, reply in proxy.release(reason: reason, reply: reply) }
+        try call(.release(reason: reason)) { proxy, reply in proxy.release(reason: reason, reply: reply) }
     }
 
     private func requireEnabled() throws {
@@ -129,7 +131,7 @@ final class HelperBackend: PmsetBackend, HelperManaging, @unchecked Sendable {
 
     func restartForUpdate() throws {
         try requireEnabled()
-        try call { proxy, reply in proxy.restartForUpdate(reply: reply) }
+        try call(.restartForUpdate) { proxy, reply in proxy.restartForUpdate(reply: reply) }
         dropConnection()
         let deadline = Date().addingTimeInterval(Self.restartWait)
         var last = HelperVersionCheck.Verdict.unknown
@@ -170,7 +172,7 @@ final class HelperBackend: PmsetBackend, HelperManaging, @unchecked Sendable {
         guard service.status == .enabled else { return nil }
         var data = Data()
         do {
-            try callData { proxy, reply in proxy.status(reply: reply) } result: { data = $0 }
+            try callData(.status) { proxy, reply in proxy.status(reply: reply) } result: { data = $0 }
         } catch {
             return nil
         }
@@ -198,31 +200,39 @@ final class HelperBackend: PmsetBackend, HelperManaging, @unchecked Sendable {
 
     // MARK: - XPC
 
-    private func proxy(errorHandler: @escaping (Error) -> Void) throws -> HelperXPC {
+    /// A connection to the helper's mach service. `verified` demands the
+    /// helper's code signature (see `HelperTrust` for when that cannot work).
+    private static func makeConnection(verified: Bool) -> NSXPCConnection {
+        let c = NSXPCConnection(machServiceName: HelperIdentity.machServiceName, options: .privileged)
+        c.remoteObjectInterface = .stayAwakeHelper()
+        // Talk only to the real helper, signed by the same team.
+        if verified { c.setCodeSigningRequirement(HelperIdentity.helperRequirement(relaxed: Self.relaxed)) }
+        return c
+    }
+
+    /// The shared, verified connection.
+    private func verifiedConnection() -> NSXPCConnection {
         lock.lock()
         defer { lock.unlock() }
-        let c: NSXPCConnection
-        if let existing = connection {
-            c = existing
-        } else {
-            c = NSXPCConnection(machServiceName: HelperIdentity.machServiceName, options: .privileged)
-            c.remoteObjectInterface = .stayAwakeHelper()
-            // Talk only to the real helper, signed by the same team.
-            c.setCodeSigningRequirement(HelperIdentity.helperRequirement(relaxed: Self.relaxed))
-            c.invalidationHandler = { [weak self, weak c] in
-                guard let self, let c else { return }
-                self.dropConnection(c)
-            }
-            // The helper restarted (update, crash, launchd): start clean
-            // on the next call instead of reusing a half dead connection.
-            c.interruptionHandler = { [weak self, weak c] in
-                guard let self, let c else { return }
-                self.dropConnection(c)
-                c.invalidate()
-            }
-            c.resume()
-            connection = c
+        if let existing = connection { return existing }
+        let c = Self.makeConnection(verified: true)
+        c.invalidationHandler = { [weak self, weak c] in
+            guard let self, let c else { return }
+            self.dropConnection(c)
         }
+        // The helper restarted (update, crash, launchd): start clean
+        // on the next call instead of reusing a half dead connection.
+        c.interruptionHandler = { [weak self, weak c] in
+            guard let self, let c else { return }
+            self.dropConnection(c)
+            c.invalidate()
+        }
+        c.resume()
+        connection = c
+        return c
+    }
+
+    private func proxy(on c: NSXPCConnection, errorHandler: @escaping (Error) -> Void) throws -> HelperXPC {
         guard let proxy = c.remoteObjectProxyWithErrorHandler(errorHandler) as? HelperXPC else {
             throw BackendError("helper interface unavailable")
         }
@@ -238,38 +248,67 @@ final class HelperBackend: PmsetBackend, HelperManaging, @unchecked Sendable {
     }
 
     /// One call with a String? reply: nil is success. Waits at most `callTimeout`.
-    private func call(_ send: (HelperXPC, @escaping (String?) -> Void) -> Void) throws {
-        let refused: String? = try roundTrip(send)
+    private func call(_ request: HelperRequest, _ send: (HelperXPC, @escaping (String?) -> Void) -> Void) throws {
+        let refused: String? = try roundTrip(request, send)
         if let refused { throw BackendError("helper: \(refused)") }
     }
 
-    private func callData(_ send: (HelperXPC, @escaping (Data) -> Void) -> Void, result: (Data) -> Void) throws {
-        result(try roundTrip(send))
+    private func callData(_ request: HelperRequest, _ send: (HelperXPC, @escaping (Data) -> Void) -> Void,
+                          result: (Data) -> Void) throws {
+        result(try roundTrip(request, send))
     }
+
+    /// The app's check of the helper's signature failed. After an in-place
+    /// update that is the old helper, still running from the deleted bundle.
+    static func isSignatureFailure(_ error: Error) -> Bool {
+        let e = error as NSError
+        return e.domain == NSCocoaErrorDomain && e.code == NSXPCConnectionCodeSigningRequirementFailure
+    }
+
+    static let staleHelperText = "the running helper cannot be verified, it still runs from a replaced copy of StayAwake. "
+        + "Restart the Mac, or use Reinstall Helper in Settings"
 
     /// Sends one message. A broken connection (the helper restarted, the Mac
     /// woke, launchd swapped the binary) is dropped and the message is sent
     /// once more on a fresh connection. Every call is safe to repeat: hold
     /// extends, release is idempotent, status and heartbeat change nothing extra.
-    private func roundTrip<Value>(_ send: (HelperXPC, @escaping (Value) -> Void) -> Void) throws -> Value {
-        var lastError: Error = BackendError("helper connection failed")
-        for attempt in 0..<2 {
+    ///
+    /// When the helper fails the signature check and `HelperTrust` allows the
+    /// call, the second try goes over a one-off connection without that check.
+    private func roundTrip<Value>(_ request: HelperRequest,
+                                  _ send: (HelperXPC, @escaping (Value) -> Void) -> Void) throws -> Value {
+        var verified = true
+        var failures = 0
+        while true {
             let outcome = Outcome<Value>()
-            let p = try proxy { error in outcome.finish(.failure(BackendError("helper connection failed: \(error.localizedDescription)"))) }
+            let oneOff = !verified
+            let c = oneOff ? Self.makeConnection(verified: false) : verifiedConnection()
+            if oneOff { c.resume() }
+            defer { if oneOff { c.invalidate() } }
+            let p = try proxy(on: c) { error in outcome.finish(.failure(error)) }
             send(p) { value in outcome.finish(.success(value)) }
             switch outcome.wait(timeout: Self.callTimeout) {
             case nil:
-                dropConnection()
+                if !oneOff { dropConnection() }
                 throw BackendError("helper did not answer within \(Int(Self.callTimeout)) s")
             case .failure(let error)?:
-                dropConnection()
-                lastError = error
-                if attempt == 0 { Thread.sleep(forTimeInterval: 0.2) }
+                if !oneOff { dropConnection() }
+                if Self.isSignatureFailure(error) {
+                    let stale = BackendError("helper connection failed: \(Self.staleHelperText)")
+                    guard !oneOff, HelperTrust.mayCallUnverified(request) else { throw stale }
+                    NSLog("StayAwake: helper signature check failed (stale helper after an update), sending %@ unverified",
+                          String(describing: request))
+                    verified = false
+                    continue
+                }
+                failures += 1
+                let failed = BackendError("helper connection failed: \(error.localizedDescription)")
+                if oneOff || failures >= 2 { throw failed }
+                Thread.sleep(forTimeInterval: 0.2)
             case .success(let value)?:
                 return value
             }
         }
-        throw lastError
     }
 }
 

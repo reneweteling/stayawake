@@ -223,3 +223,28 @@ public enum HelperRepair {
         }
     }
 }
+
+/// Which calls the app may send to a helper whose code signature it cannot
+/// check.
+///
+/// The updater swaps the app bundle in place and deletes the old one, but
+/// launchd keeps the old helper process running until it exits. From then on
+/// macOS cannot read that process's code from disk, so the app's code signing
+/// requirement on the XPC connection fails for every call
+/// (NSXPCConnectionCodeSigningRequirementFailure, "Couldn't communicate with a
+/// helper application"). Only the helper can end that state, so the app has
+/// to reach it.
+///
+/// The mach service lives in the system domain and only launchd, from our
+/// registered job, can publish it. The helper still checks the app's
+/// signature on its side. So the app may send calls that can only make the
+/// Mac safer or swap in the new helper: release, status and restartForUpdate.
+/// Hold and heartbeat, which keep sleep disabled, stay verified only.
+public enum HelperTrust {
+    public static func mayCallUnverified(_ request: HelperRequest) -> Bool {
+        switch request {
+        case .release, .status, .restartForUpdate: return true
+        case .hold, .heartbeat: return false
+        }
+    }
+}
