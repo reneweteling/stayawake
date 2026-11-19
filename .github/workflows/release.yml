@@ -145,6 +145,11 @@ jobs:
           security list-keychains -d user -s "$KEYCHAIN" login.keychain-db
           rm -f "$RUNNER_TEMP/cert.p12"
 
+      - name: Setup Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version: "24"
+
       - name: Build StayAwake.app
         shell: bash
         env:

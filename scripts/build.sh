@@ -112,19 +112,26 @@ fi
 echo "✓ Signatures valid, helper identifier $HELPER_ID"
 
 # Debug symbols to Sentry so crashes are readable. Only with an auth token.
-# Uses the `sentry` CLI when installed, else `npx @sentry/cli`.
+# Uses `sentry-cli` when installed, else `npx @sentry/cli`.
 if [[ -n "${SENTRY_AUTH_TOKEN:-}" ]]; then
     echo "→ Uploading debug symbols to Sentry..."
     # SwiftPM builds no .dSYM bundle, so make one from each binary.
     DSYM_DIR="$BUILD_DIR/dSYMs"
     rm -rf "$DSYM_DIR" && mkdir -p "$DSYM_DIR"
-    dsymutil "$MACOS/$APP_NAME" -o "$DSYM_DIR/$APP_NAME.dSYM" 2>/dev/null || true
-    dsymutil "$MACOS/$HELPER_NAME" -o "$DSYM_DIR/$HELPER_NAME.dSYM" 2>/dev/null || true
+    for bin in "$APP_NAME" "$HELPER_NAME"; do
+        dsymutil "$MACOS/$bin" -o "$DSYM_DIR/$bin.dSYM" || echo "::warning::dsymutil failed for $bin"
+    done
+    ls -d "$DSYM_DIR"/*.dSYM
     export SENTRY_ORG="${SENTRY_ORG:-felobo}" SENTRY_PROJECT="${SENTRY_PROJECT:-stayawake}"
-    if command -v sentry >/dev/null 2>&1; then
-        sentry debug-files upload --include-sources "$DSYM_DIR" || echo "⚠ dSYM upload failed, continuing"
+    if command -v sentry-cli >/dev/null 2>&1; then
+        SENTRY_UPLOAD=(sentry-cli)
     else
-        npx --yes @sentry/cli debug-files upload --include-sources "$DSYM_DIR" || echo "⚠ dSYM upload failed, continuing"
+        SENTRY_UPLOAD=(npx --yes @sentry/cli)
+    fi
+    if "${SENTRY_UPLOAD[@]}" debug-files upload --include-sources "$DSYM_DIR"; then
+        echo "✓ dSYMs uploaded to Sentry ($SENTRY_ORG/$SENTRY_PROJECT)"
+    else
+        echo "::error::dSYM upload to Sentry failed, continuing the build"
     fi
 fi
 
