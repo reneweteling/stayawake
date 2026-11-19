@@ -149,6 +149,9 @@ jobs:
         shell: bash
         env:
           SIGN_IDENTITY: Developer ID Application
+          SENTRY_AUTH_TOKEN: ${{ secrets.SENTRY_AUTH_TOKEN }}
+          SENTRY_ORG: felobo
+          SENTRY_PROJECT: stayawake
         run: ./scripts/build.sh
 
       # Notarize the app itself first and staple the ticket to it, so the

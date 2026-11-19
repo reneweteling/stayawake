@@ -738,6 +738,7 @@ final class AppModel: ObservableObject {
 
     private func helperFailed(_ error: String, event: String, snapshot snap: Snapshot) {
         retry.failed(error, now: makeNow().monotonic)
+        Telemetry.capture(error, kind: event, context: reportContext())
         // Log the first few and then every 20th, so a long outage does not flood the log.
         if retry.failures <= 5 || retry.failures % 20 == 0 {
             var e = entry(event, snapshot: snap).with(message: error)
@@ -897,7 +898,33 @@ final class AppModel: ObservableObject {
 
     private func note(_ text: String, event: String, snapshot snap: Snapshot? = nil) {
         lastEvent = text
+        report(text, event: event)
         record(entry(event, snapshot: snap).with(message: text))
+    }
+
+    /// Sentry: every logged event becomes a breadcrumb, and the failures
+    /// and the "waiting for approval" state also become an event.
+    private func report(_ text: String, event: String) {
+        Telemetry.breadcrumb(text, category: event)
+        let failing = event.hasSuffix("_failed") || ["update_blocked", "update_install_unrestored", "hold_gave_up", "helper_needs_approval"].contains(event)
+        if failing { Telemetry.capture(text, kind: event, context: reportContext()) }
+    }
+
+    /// What helps to read an error: registration, helper and app version,
+    /// pmset state and macOS version. No paths, no sensor readings.
+    private func reportContext() -> [String: Any] {
+        var info: [String: Any] = [
+            "app_version": Telemetry.appVersion,
+            "macos": ProcessInfo.processInfo.operatingSystemVersionString,
+            "backend": backend.name,
+            "phase": String(describing: engine.phase),
+            "pmset_sleep_disabled": sleepDisabled.map { $0 ? "on" : "off" } ?? "unknown",
+            "failures_in_a_row": retry.failures,
+            "updating": updating,
+        ]
+        if let helper { info["helper_registration"] = String(describing: helper.registration()) }
+        info["helper_info"] = helperInfo ?? "none"
+        return info
     }
 
     private func makeStatus(now: Moment) -> MenuBarStatus {

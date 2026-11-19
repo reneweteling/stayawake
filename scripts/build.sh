@@ -68,6 +68,12 @@ cp "$HELPER_SRC" "$MACOS/$HELPER_NAME"
 # BundleProgram in that plist is relative to the app bundle.
 cp "$REPO_ROOT/Sources/StayAwakeHelper/Resources/$HELPER_PLIST" "$CONTENTS/Library/LaunchDaemons/$HELPER_PLIST"
 cp "$REPO_ROOT/Sources/StayAwake/Resources/Info.plist" "$CONTENTS/Info.plist"
+# Error reporting: the DSN is public and lives in Info.plist. SENTRY_DSN
+# overrides it for a build; set it to an empty string to build without reports.
+if [[ -n "${SENTRY_DSN+x}" ]]; then
+    /usr/libexec/PlistBuddy -c "Set :SentryDSN $SENTRY_DSN" "$CONTENTS/Info.plist"
+fi
+
 plutil -lint "$CONTENTS/Library/LaunchDaemons/$HELPER_PLIST" "$CONTENTS/Info.plist"
 BUNDLE_PROGRAM="$(/usr/libexec/PlistBuddy -c "Print :BundleProgram" "$CONTENTS/Library/LaunchDaemons/$HELPER_PLIST")"
 if [[ ! -x "$APP_DIR/$BUNDLE_PROGRAM" ]]; then
@@ -104,6 +110,23 @@ if [[ "$HELPER_ID" != "com.weteling.stayawake.helper" ]]; then
     exit 1
 fi
 echo "✓ Signatures valid, helper identifier $HELPER_ID"
+
+# Debug symbols to Sentry so crashes are readable. Only with an auth token.
+# Uses the `sentry` CLI when installed, else `npx @sentry/cli`.
+if [[ -n "${SENTRY_AUTH_TOKEN:-}" ]]; then
+    echo "→ Uploading debug symbols to Sentry..."
+    # SwiftPM builds no .dSYM bundle, so make one from each binary.
+    DSYM_DIR="$BUILD_DIR/dSYMs"
+    rm -rf "$DSYM_DIR" && mkdir -p "$DSYM_DIR"
+    dsymutil "$MACOS/$APP_NAME" -o "$DSYM_DIR/$APP_NAME.dSYM" 2>/dev/null || true
+    dsymutil "$MACOS/$HELPER_NAME" -o "$DSYM_DIR/$HELPER_NAME.dSYM" 2>/dev/null || true
+    export SENTRY_ORG="${SENTRY_ORG:-felobo}" SENTRY_PROJECT="${SENTRY_PROJECT:-stayawake}"
+    if command -v sentry >/dev/null 2>&1; then
+        sentry debug-files upload --include-sources "$DSYM_DIR" || echo "⚠ dSYM upload failed, continuing"
+    else
+        npx --yes @sentry/cli debug-files upload --include-sources "$DSYM_DIR" || echo "⚠ dSYM upload failed, continuing"
+    fi
+fi
 
 echo "→ Removing quarantine flag..."
 xattr -dr com.apple.quarantine "$APP_DIR" 2>/dev/null || true

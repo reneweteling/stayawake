@@ -218,17 +218,20 @@ final class HelperBackend: PmsetBackend, HelperManaging, @unchecked Sendable {
         let c = Self.makeConnection(verified: true)
         c.invalidationHandler = { [weak self, weak c] in
             guard let self, let c else { return }
+            Telemetry.breadcrumb("helper connection invalidated", category: "helper", level: .warning)
             self.dropConnection(c)
         }
         // The helper restarted (update, crash, launchd): start clean
         // on the next call instead of reusing a half dead connection.
         c.interruptionHandler = { [weak self, weak c] in
             guard let self, let c else { return }
+            Telemetry.breadcrumb("helper connection interrupted", category: "helper", level: .warning)
             self.dropConnection(c)
             c.invalidate()
         }
         c.resume()
         connection = c
+        Telemetry.breadcrumb("helper connection opened", category: "helper")
         return c
     }
 
@@ -244,6 +247,7 @@ final class HelperBackend: PmsetBackend, HelperManaging, @unchecked Sendable {
         let c = connection
         if only == nil || only === c { connection = nil }
         lock.unlock()
+        if only == nil, c != nil { Telemetry.breadcrumb("helper connection dropped", category: "helper") }
         if only == nil { c?.invalidate() }
     }
 
@@ -290,20 +294,34 @@ final class HelperBackend: PmsetBackend, HelperManaging, @unchecked Sendable {
             switch outcome.wait(timeout: Self.callTimeout) {
             case nil:
                 if !oneOff { dropConnection() }
+                Telemetry.breadcrumb("helper did not answer within \(Int(Self.callTimeout)) s", category: "helper", level: .warning)
                 throw BackendError("helper did not answer within \(Int(Self.callTimeout)) s")
             case .failure(let error)?:
                 if !oneOff { dropConnection() }
+                Telemetry.breadcrumb("helper call failed (\(oneOff ? "unverified" : "verified")): \(error.localizedDescription)",
+                                     category: "helper", level: .warning)
                 if Self.isSignatureFailure(error) {
                     let stale = BackendError("helper connection failed: \(Self.staleHelperText)")
                     guard !oneOff, HelperTrust.mayCallUnverified(request) else { throw stale }
                     NSLog("StayAwake: helper signature check failed (stale helper after an update), sending %@ unverified",
                           String(describing: request))
+                    Telemetry.breadcrumb("helper signature check failed, retrying \(request) unverified", category: "helper", level: .warning)
                     verified = false
                     continue
                 }
                 failures += 1
                 let failed = BackendError("helper connection failed: \(error.localizedDescription)")
-                if oneOff || failures >= 2 { throw failed }
+                if oneOff || failures >= 2 {
+                    Telemetry.capture(failed.localizedDescription, kind: "helper_connection", context: [
+                        "app_version": Telemetry.appVersion,
+                        "macos": ProcessInfo.processInfo.operatingSystemVersionString,
+                        "helper_registration": String(describing: registration()),
+                        "error": String(describing: error),
+                        "request": String(describing: request),
+                        "unverified_fallback": String(oneOff),
+                    ])
+                    throw failed
+                }
                 Thread.sleep(forTimeInterval: 0.2)
             case .success(let value)?:
                 return value

@@ -150,8 +150,8 @@ private struct GeneralTab: View {
             }
             Section("Privacy") {
                 Toggle(isOn: $settings.crashReports) {
-                    Text("Send crash reports")
-                    Text("Only the app version and the crash. No readings, names or files.")
+                    Text("Send crash and error reports")
+                    Text("App and macOS version, helper state and the error text. No readings, names or files.")
                 }
                 .onChange(of: settings.crashReports) { _, _ in Telemetry.startIfEnabled() }
             }

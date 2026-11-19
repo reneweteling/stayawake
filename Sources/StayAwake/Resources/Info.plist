@@ -28,6 +28,8 @@
     <string>14.0</string>
     <key>LSUIElement</key>
     <true/>
+    <key>SentryDSN</key>
+    <string>https://17a7826b3607f7a5b75936a3d08ee6ec@o157871.ingest.us.sentry.io/4512457527656448</string>
     <key>NSHumanReadableCopyright</key>
     <string>© 2026 Felobo B.V.</string>
 </dict>

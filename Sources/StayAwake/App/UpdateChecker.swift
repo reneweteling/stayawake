@@ -80,6 +80,7 @@ final class UpdateChecker: ObservableObject {
         installStep = UpdateStage.download.title
         do {
             try await SelfUpdater.install(asset: asset, version: latestVersion, progress: { stage in
+                Telemetry.breadcrumb("update step: \(stage.title)", category: "update")
                 Task { @MainActor in
                     let checker = UpdateChecker.shared
                     if checker.installStep != nil { checker.installStep = stage.title }

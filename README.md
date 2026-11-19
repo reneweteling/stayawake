@@ -93,7 +93,7 @@ sudo pmset -a disablesleep 0
 
 ## Privacy
 
-No sensor data leaves the Mac. Crash reports go to Sentry with the app version and rule names, and can be switched off in Settings, General. The update check calls the public GitHub releases API with a generic User-Agent and no cookies.
+No sensor data leaves the Mac. Crash and error reports go to Sentry with the app and macOS version, the helper state and the error text (file paths removed). No IP address, user name or sensor readings. On by default, switch it off under Settings, General, Send crash and error reports. Builds without a Sentry DSN send nothing. The update check calls the public GitHub releases API with a generic User-Agent and no cookies.
 
 ## Development
 
